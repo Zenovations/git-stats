@@ -1,0 +1,15 @@
+{
+    "name": "git-stats",
+    "description": "Collect interesting statistics about GitHub projects into a JSON object",
+    "author": "Michael Wulf <katowulf@gmail.com>",
+    "dependencies": {
+        "octonode":    "0.2.x",
+        "q":           "0.8.x",
+        "underscore":  "1.4.x",
+        "underscore.string": "2.3.x"
+    },
+    "devDependencies": {
+        "mocha": "1.2.x"
+    },
+    "engine": "node >= 0.6.19"
+}
