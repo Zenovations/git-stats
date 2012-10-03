@@ -2,14 +2,15 @@
 module.exports = {
    username: 'github_user',
    password: 'github_pass',
+   email:    'notified on errors',
    repoFilter: function(repo) {
-      return !repo.fork && repo.name.match(/^[._-~]/);
+      return !repo.fork && repo.name.match(/^[._~-]/);
    },
-   fileFilter: function(filename) {
-      return !filename.match(/^[._-~]/);
+   dirFilter: function(dir) {
+      return !dir.name.match(/^[._~-]/) && !(dir.name in {lib: 1, libs: 1});
    },
-   portfolioFilter: function(repo) {
-      return repo.full_name.indexOf('_') !== 0;
+   fileFilter: function(file) {
+      return !file.name.match(/^[._~-]/);
    }
 };
 

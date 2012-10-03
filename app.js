@@ -1,8 +1,10 @@
 
 var Q      = require('q'),
+    _      = require('underscore'),
     gh     = require('octonode'),
     conf   = require('./config.js'),
-    client = gh.client(conf);
+    client = gh.client(conf),
+    base64 = require('./base64.js');
 
 //var ghme   = client.me();
 //var ghuser = client.user('pksunkara');
@@ -11,20 +13,66 @@ var Q      = require('q'),
 //var ghgist = client.gist();
 //var ghteam = client.team(37);
 
-function fileStats(stats, filePath) {
-
-}
-
-function dirStats(stats, path) {
+function fileStats(stats, filePath, repo) {
    var def = Q.defer();
-   console.log('dirStats', stats.fullName, path);
-   client.repo(stats.fullName).contents(path, function(err, files) {
+   repo.contents(filePath, function(err, contents) {
       if( err ) {
-         console.log('error in dirStats', stats.fullName, path);//debug
+         console.error('ERROR (fileStats)', err);
+         console.log(err);
          def.reject(err);
       }
       else {
-         stats.files += files.length;
+         console.log('    > file: ', filePath.substr(Math.max(filePath.lastIndexOf('/'), 0)));
+         var decodedContent = base64.decode(contents.content);
+         stats.lines += decodedContent.split("\n").length;
+         stats.files++;
+         stats.bytes += contents.size;
+         def.resolve();
+      }
+   });
+   return def.promise;
+}
+
+function dirStats(stats, path, repo) {
+   var def = Q.defer();
+   console.log(' + dir: ', stats.fullName, path);
+   if( !repo ) { repo = client.repo(stats.fullName); }
+
+   repo.contents(path, function(err, files) {
+      if( err ) {
+         console.error('ERROR (dirStats)', stats.fullName, path);
+         def.reject(err);
+      }
+      else {
+         var promises = [], i = -1, len = files.length, filePath, f;
+         while(++i < len) {
+            f = files[i];
+            filePath = f.path;
+            if( f.type == 'dir' && (!conf.dirFilter || conf.dirFilter(f)) ) {
+               promises.push(dirStats(stats, filePath, repo));
+            }
+            else if( f.type == 'file' && (!conf.fileFilter || conf.fileFilter(f)) ) {
+               promises.push(fileStats(stats, filePath, repo));
+            }
+         }
+         Q.all(promises).then(function() {
+            console.log('all dirStats promises resolved', path);
+            def.resolve();
+         })
+      }
+   });
+
+   return def.promise;
+}
+
+function readCommits(stats, repo) {
+   var def = Q.defer();
+   repo.commits(function(err, commits) {
+      if( err ) {
+         def.reject(err);
+      }
+      else {
+         stats.commits = commits.length;
          def.resolve();
       }
    });
@@ -32,7 +80,8 @@ function dirStats(stats, path) {
 }
 
 function readRepo(stats, repoData) {
-   var thisRepo = stats[ repoData.name ] = {
+   console.log('REPO: ', repoData.name);
+   var repo = client.repo(repoData.full_name), repoStats = stats[ repoData.name ] = {
       name: repoData.name,
       fullName: repoData.full_name,
       size: repoData.size,
@@ -46,51 +95,62 @@ function readRepo(stats, repoData) {
       commits: 0,
       bytes: 0
    };
-   return dirStats(thisRepo, '/');
+   return Q.all([ readCommits(repoStats, repo), dirStats(repoStats, '', repo) ]);
 }
 
 function accumulateRepos(stats, repoList) {
-   var i = -1, len = repoList? repoList.length : 0, promises = [];
-   while(++i < len) {
-      if( !repoList[i].fork && (!conf.repoFilter || conf.repoFilter(repoList[i])) ) {
-         promises.push(readRepo(stats, repoList[i]));
-      }
+   if( conf.repoFilter ) {
+      repoList = _.filter(repoList, conf.repoFilter);
+   }
+   var promises = [], i = repoList.length;
+   while(i--) {
+      promises.push(readRepo(stats, repoList[i]));
    }
    return Q.all(promises);
 }
 
 function processOrg(stats, org) {
-   var d = Q.defer();
+   var deferred = Q.defer();
+   console.log("------------\nORG: "+ org.login + "\n------------");
    client.org(org.login).repos(function(err, repoList) {
       if( err ) {
-         console.error(err);
+         deferred.reject(err);
       }
       else {
          accumulateRepos(stats, repoList)
-            .then(d.resolve)
-            .fail(d.reject);
+            .then(deferred.resolve)
+            .fail(deferred.reject);
       }
    });
-   return d.promise;
+   return deferred.promise;
+}
+
+function processOrgs(stats, orgList) {
+   var promises = [], i = orgList.length, org, p;
+   while(i--) {
+      promises.push(processOrg(stats, orgList[i]));
+   }
+   return Q.all(promises);
 }
 
 var user = client.me(), stats = {};
 
-Q.ninvoke(user, 'repos')
-   .then(function(list) {
-      return accumulateRepos(stats, list);
-   })
-   .then(function() {
-      return Q.ninvoke(user, 'orgs');
-   })
-   .then(function(list) {
-      return processOrg(stats, list);
-   })
+Q.all(
+      Q.ninvoke(user, 'repos')
+         .then(function(list) {
+            console.log("------------\nUSER: "+ conf.username +"\n------------");
+            return accumulateRepos(stats, list);
+         }),
+      Q.ninvoke(user, 'orgs')
+         .then(function(list) {
+            return processOrgs(stats, list);
+         })
+   )
    .then(
-      function() { console.log('stats', stats); },
       function() { console.log('stats', stats); }
    )
    .fail(function(e) {
-      console.error(e);
+//      console.error(e.toString());
+      console.error(e.stack);
    });
 

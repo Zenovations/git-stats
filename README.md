@@ -17,6 +17,10 @@ this to a Cron Job or GitHub hook and keep them up-to-date on my site.
 
 `node ./app.js`
 
+## License
+
+Creative Commons: http://creativecommons.org/licenses/by-sa/3.0/
+
 # Testing
 
-No test cases, sorry
+N/A
