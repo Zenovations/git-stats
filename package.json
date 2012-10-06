@@ -4,12 +4,14 @@
     "author": "Michael Wulf <katowulf@gmail.com>",
     "version": "0.1.0",
     "dependencies": {
-        "octonode":    "0.2.x",
-        "q":           "0.8.x",
-        "underscore":  "1.4.x",
+        "github":            ">= 0.1.6",
+        "q":                 "0.8.x",
+        "underscore":        "1.4.x",
         "underscore.string": "2.3.x",
-        "moment":      "1.7.x",
-        "emailjs":     "0.3.x"
+        "moment":            "1.7.x",
+        "nodemailer":        "0.3.x",
+        "json2csv":          "0.0.x",
+        "jsontoxml":         "0.0.x"
     },
     "engine": "node >= 0.6.19"
 }
