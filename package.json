@@ -11,7 +11,9 @@
         "moment":            "1.7.x",
         "nodemailer":        "0.3.x",
         "json2csv":          "0.0.x",
-        "jsontoxml":         "0.0.x"
+        "pretty-data":       "0.x.x",
+        "inflection":        "1.2.x",
+        "data2xml":          "0.5.x"
     },
     "engine": "node >= 0.6.19"
 }
