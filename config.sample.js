@@ -5,25 +5,30 @@ module.exports = {
    // required: the account we're going to collect stats for
    user: USER,
 
-   // collect statistics such as how many lines of code, how many files, et al
-   // this takes significantly more requests and cpu cycles, so if this information
-   // isn't going to be used, set this to false
-   deep: true,
+   collect: {
+
+      // collect statistics such as how many lines of code, and how many files
+      // this requires iterating all the files in a repo so turn it off if that info isn't useful
+      files: true,
+
+      // accumulates all repo data (commits, bytes, watchers, etc) for the last 30 days/weeks/months/years
+      // allowing it to be graphed over time
+      trends: true
+
+   },
 
    // how shall we output the data?
    format: 'json', // 'json', 'xml', or 'csv'
 
    // where shall we output it to?
    to: 'stdout',                     // print to console
-   //to: '/file/path/filename.json', // output to a file
+   //to: './github-stats-'+USER+'.json', // output to a file
    //to: 'user@gmail.com',           // send results via email
 
-   // used when `update_only` is true and `to` is not a file; this caches the last update time (the last time we checked
-   // repos and files for changes) so that only files modified since we collected stats are read from GitHub
-   cache_file: '/tmp/git-stats.cache.json',
+   // this caches all stats so that only repos/files modified since we last collected stats are read
+   // it can be turned off by setting this to a falsy value, but that will greatly increase overhead
+   cache_file: '/tmp/github-stats-'+USER+'.cache.json',
 
-   // setting this to false will add formatting (returns, indentation) to the outputted data
-   compress: true,
 
    // comment this out (or `return true`) to generate stats for all repos
    repoFilter: function(repo) {
@@ -69,6 +74,9 @@ module.exports = {
          args: ["-f sender@example.com"]
       }
    },
+
+   // setting this to false will add formatting (returns, indentation) to the outputted data for human readability
+   compress: true,
 
    // setting this to true generates lots of logging to stdout
    debug: false

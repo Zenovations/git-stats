@@ -1,5 +1,7 @@
 
 module.exports = function(conf, github) {
+   var VALID_EMAIL = /((([a-z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])+(\.([a-z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])+)*)|((\x22)((((\x20|\x09)*(\x0d\x0a))?(\x20|\x09)+)?(([\x01-\x08\x0b\x0c\x0e-\x1f\x7f]|\x21|[\x23-\x5b]|[\x5d-\x7e]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(\\([\x01-\x09\x0b\x0c\x0d-\x7f]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF]))))*(((\x20|\x09)*(\x0d\x0a))?(\x20|\x09)+)?(\x22)))@((([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.)+(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.?/;
+
    var fxns = {},
        Q          = require('q'),
        _          = require('underscore'),
@@ -138,6 +140,18 @@ module.exports = function(conf, github) {
       });
    };
 
+   fxns.outputType = function(to) {
+      if( to === 'stdout' ) {
+         return 'stdout';
+      }
+      else if( VALID_EMAIL.test(to) ) {
+         return 'email';
+      }
+      else {
+         return 'file';
+      }
+   };
+
    function prepArraysForXml(data) {
       if( _.isArray(data) ) {
          var i = data.length;
@@ -215,7 +229,7 @@ module.exports = function(conf, github) {
    function dirStats(stats, path) {
       var def = Q.defer();
 
-      if( conf.deep ) {
+      if( conf.collect.files ) {
          console.log(' + dir: ', stats.fullName, path);
 
          var opts = {
@@ -314,10 +328,9 @@ module.exports = function(conf, github) {
       });
    }
 
-   function readCache(cacheFile) {
-      if( cacheFile && FS.existsSync(cacheFile) ) {
-         return Q.ninvoke(FS, 'readFile', cacheFile, 'utf-8').then(function(data) {
-            console.log('cache file read successfully');
+   function readCache(cacheFileName) {
+      if( cacheFileName && FS.existsSync(cacheFileName) ) {
+         return Q.ninvoke(FS, 'readFile', cacheFileName, 'utf-8').then(function(data) {
             return data? JSON.parse(data) : null;
          });
       }

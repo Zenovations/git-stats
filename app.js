@@ -13,8 +13,6 @@ var stats = {
    repos: {}
 };
 
-var VALID_EMAIL = /((([a-z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])+(\.([a-z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])+)*)|((\x22)((((\x20|\x09)*(\x0d\x0a))?(\x20|\x09)+)?(([\x01-\x08\x0b\x0c\x0e-\x1f\x7f]|\x21|[\x23-\x5b]|[\x5d-\x7e]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(\\([\x01-\x09\x0b\x0c\x0d-\x7f]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF]))))*(((\x20|\x09)*(\x0d\x0a))?(\x20|\x09)+)?(\x22)))@((([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.)+(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.?/;
-
 fxns.hookToConsoleDotLog(conf.debug);
 
 Q.fcall(fxns.ready)
@@ -31,7 +29,7 @@ Q.fcall(fxns.ready)
          ])
    })
    .then(function() {
-      var out;
+      var out, type = fxns.outputType(conf.to);
       switch(conf.format) {
          case 'json':
             out = conf.compress? JSON.stringify(stats) : JSON.stringify(stats, null, 2);
@@ -46,21 +44,25 @@ Q.fcall(fxns.ready)
             throw new Error('invalid output format: '+conf.format);
       }
 
-      if( conf.to === 'stdout' ) {
-         process.stdout.write(out+"\n");
-      }
-      else if( VALID_EMAIL.test(conf.to) ) {
-         fxns.sendEmail(conf.to, {
-            text: 'see attached',
-            subject: '[git-stats] stats for '+conf.user,
-            attachments: [
-               { fileName: 'stats.'+conf.format, contents: out }
-            ]
-         });
-         console.log('email delivered', conf.to);
-      }
-      else {
-         fxns.writeFile(conf.to, out);
+      switch(type) {
+         case 'stdout':
+            process.stdout.write(out+"\n");
+            break;
+         case 'email':
+            fxns.sendEmail(conf.to, {
+               text: 'see attached',
+               subject: '[git-stats] stats for '+conf.user,
+               attachments: [
+                  { fileName: 'stats.'+conf.format, contents: out }
+               ]
+            });
+            console.log('email delivered', conf.to);
+            break;
+         case 'file':
+            fxns.writeFile(conf.to, out);
+            break;
+         default:
+            throw new Error('invalid output type', type);
       }
 
       fxns.cache(stats);
