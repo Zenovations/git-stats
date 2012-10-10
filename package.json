@@ -1,6 +1,6 @@
 {
     "name": "git-stats",
-    "description": "Collect interesting statistics about GitHub projects into a JSON object",
+    "description": "Compile interesting statistics about a user's GitHub projects into a useful format",
     "author": "Michael Wulf <katowulf@gmail.com>",
     "version": "0.1.0",
     "dependencies": {
@@ -15,5 +15,5 @@
         "inflection":        "1.2.x",
         "data2xml":          "0.5.x"
     },
-    "engine": "node >= 0.6.19"
+    "engine": "node >= 0.8.0"
 }

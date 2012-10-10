@@ -17,16 +17,19 @@ var VALID_EMAIL = /((([a-z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF90
 
 fxns.hookToConsoleDotLog(conf.debug);
 
-Q.all([
-      Q.ninvoke(github.repos, 'getFromUser', {user: conf.user}) //todo use accumulate
-         .then(function(list) {
-            return fxns.processRepos(stats, list);
-         }),
-      Q.ninvoke(github.orgs, 'getFromUser', {user: conf.user}) //todo use accumulate
-         .then(function(list) {
-            return fxns.processOrgs(stats, list);
-         })
-   ])
+Q.fcall(fxns.ready)
+   .then(function() {
+      return Q.all([
+         Q.ninvoke(github.repos, 'getFromUser', {user: conf.user}) //todo use accumulate
+            .then(function(list) {
+               return fxns.processRepos(stats, list);
+            }),
+         Q.ninvoke(github.orgs, 'getFromUser', {user: conf.user}) //todo use accumulate
+            .then(function(list) {
+               return fxns.processOrgs(stats, list);
+            })
+         ])
+   })
    .then(function() {
       var out;
       switch(conf.format) {
@@ -37,11 +40,7 @@ Q.all([
             out = fxns.toXml(stats, conf.compress);
             break;
          case 'csv':
-            var json2csv = require('json2csv'), data = _.toArray(stats);
-            out = json2csv.parse({
-               data: data,
-               fields: data.length? _.keys(data[0]) : []
-            });
+            out = fxns.toCsv(stats);
             break;
          default:
             throw new Error('invalid output format: '+conf.format);
@@ -61,9 +60,10 @@ Q.all([
          console.log('email delivered', conf.to);
       }
       else {
-         //todo
-         throw new Error('file output format not implemented yet');
+         fxns.writeFile(conf.to, out);
       }
+
+      fxns.cache(stats);
    })
    .fail(function(e) {
       if( conf.send_errors_to ) {

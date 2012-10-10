@@ -27,7 +27,7 @@ module.exports = {
 
    // comment this out (or `return true`) to generate stats for all repos
    repoFilter: function(repo) {
-      return !repo.fork && repo.name.match(/^[._~-]/);
+      return !repo.fork && !repo.name.match(/^[._~-]/);
    },
 
    // comment this out (or `return true`) to generate stats for all directories
