@@ -11,7 +11,7 @@ module.exports = function(conf, github) {
        util       = require('util'),
        nodemailer = require("nodemailer"),
        FS         = require('fs'),
-       cache      = { repos: {}, lastUpdated: moment().subtract('years', 99).format(), user: conf.user },
+       cache      = { repos: {}, lastUpdated: moment.utc().subtract('years', 99).format(), user: conf.user },
        readyDef   = readCache(conf.cache_file);
 
    readyDef.then(function(cacheData) {
@@ -75,10 +75,10 @@ module.exports = function(conf, github) {
       if( conf.repoFilter ) {
          repoList = _.filter(repoList, conf.repoFilter);
       }
-      var promises = [], i = repoList.length, last = moment(cache.lastUpdated), name;
+      var promises = [], i = repoList.length, last = moment.utc(cache.lastUpdated), name;
       while(i--) {
          name = repoList[i].name;
-         if( !hasRepo(cache, name) || moment(repoList[i].updated_at).diff(last) > 0 ) {
+         if( !hasRepo(cache, name) || moment.utc(repoList[i].updated_at).diff(last) > 0 ) {
             promises.push(readRepo(stats.repos, repoList[i]));
          }
          else {
@@ -340,7 +340,7 @@ module.exports = function(conf, github) {
    }
 
    function upToDate(lastUpdate, utcString) {
-      return moment(utcString).diff(lastUpdate) <= 0;
+      return moment.utc(utcString).diff(lastUpdate) <= 0;
    }
 
    function hasRepo(cache, name) {

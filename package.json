@@ -15,5 +15,11 @@
         "inflection":        "1.2.x",
         "data2xml":          "0.5.x"
     },
+    "devDependencies": {
+        "nodeunit":          "0.7.x"
+    },
+    "scripts":         {
+        "test": "nodeunit test"
+    },
     "engine": "node >= 0.8.0"
 }

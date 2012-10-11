@@ -17,6 +17,11 @@ this to a Cron Job or GitHub hook and keep them up-to-date on my site.
 
 `node ./app.js`
 
+//todo config options
+//todo all times are in utc
+//todo examples
+//todo demo (online example)
+
 ## License
 
 Creative Commons: http://creativecommons.org/licenses/by-sa/3.0/

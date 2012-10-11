@@ -13,16 +13,20 @@ var stats = {
    repos: {}
 };
 
+if( conf.collect.trends ) {
+   stats.trends = {};
+}
+
 fxns.hookToConsoleDotLog(conf.debug);
 
 Q.fcall(fxns.ready)
    .then(function() {
       return Q.all([
-         Q.ninvoke(github.repos, 'getFromUser', {user: conf.user}) //todo use accumulate
+         Q.ninvoke(github.repos, 'getFromUser', {user: conf.user}) //todo use accumulate (could be more than 100)
             .then(function(list) {
                return fxns.processRepos(stats, list);
             }),
-         Q.ninvoke(github.orgs, 'getFromUser', {user: conf.user}) //todo use accumulate
+         Q.ninvoke(github.orgs, 'getFromUser', {user: conf.user}) //todo use accumulate (could be more than 100)
             .then(function(list) {
                return fxns.processOrgs(stats, list);
             })

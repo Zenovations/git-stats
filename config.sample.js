@@ -13,7 +13,20 @@ module.exports = {
 
       // accumulates all repo data (commits, bytes, watchers, etc) for the last 30 days/weeks/months/years
       // allowing it to be graphed over time
-      trends: true
+      trends: true,
+
+      // accumulates add/delete/update info for each commit action (requires one request per commit)
+      addsAndDeletes: true,
+
+      // specify how much history to collect and the time frames to collect it over
+      // valid keys are 'year', 'month', 'week', or 'day' and stats can be accumulated
+      // over any of these intervals for any distance (the only limit is memory and cpu cycles)
+      intervals: {
+         years: 5,
+         months: 24,
+         weeks: 52,
+         days: 60
+      }
 
    },
 
