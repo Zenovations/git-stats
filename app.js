@@ -12,7 +12,7 @@ if( !conf.debug ) {
 
 sb.load(conf)
       .then(function(stats) {
-         console.log(stats.getTrends(conf.format, conf.compress));
+         console.log(stats.getStats(conf.format, conf.compress));
       })
       .fail(function(e) {
          console.error(e);

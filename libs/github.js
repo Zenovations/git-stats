@@ -52,11 +52,66 @@ exports.commit = function(owner, repo, sha) {
    //todo
 };
 
-exports.files = function(owner, repo, iterator, options) {
-   //todo
-   //todo options: modifiedSince, dirFilter, fileFilter
-   //todo
+/**
+ * @param {string} owner
+ * @param {string} repo
+ * @param {function} iterator called once with each repo object, if this function returns {boolean}false, iteration is aborted
+ * @param {object} [filters] may contain any of {moment}since, {function}dirFilter, {function}fileFilter
+ * @return {promise}
+ */
+exports.files = function(owner, repo, iterator, filters) {
+   var opts = {user: owner, repo: repo};
+   return accFiles(iterator, opts, filters);
 };
+
+/**
+ * @param {string} owner
+ * @param {string} repo
+ * @param {string} path relative path from repo root, do not start it with /
+ * @param {function} iterator called once with the file object; returning false here has no effect (see other methods)
+ * @return {promise}
+ */
+exports.file = function(owner, repo, path, iterator) {
+   var opts = {user: owner, repo: repo, path: path};
+   return Q.ninvoke(gh.repos, 'getContent', opts).then(function(file) {
+      return iterator(file);
+   });
+};
+
+function accFiles(iterator, props, filters, path, page) {
+   page || (page = 1);
+   filters || (filters = {});
+   var opts = _.extend({}, props, {per_page: PER_PAGE, page: page}, {path: path || ''});
+   return Q.ninvoke(gh.repos, 'getContent', opts).then(function(files) {
+      var promises = [], i = -1, len = files.length, filePath, f, aborted;
+      while(++i < len && !aborted) {
+         //todo
+         //todo filter.since!
+         //todo
+
+         f = files[i];
+         filePath = f.path;
+         if( f.type == 'dir' && (!filters.dirFilter || filters.dirFilter(f)) ) {
+            console.log('recursing to', filePath);
+            promises.push(accFiles(iterator, props, filters, filePath));
+         }
+         else if( f.type == 'file' && (!filters.fileFilter || filters.fileFilter(f)) ) {
+            var res = iterator(f, props.repo, props.user);
+            if( Q.isPromise(res) ) { promises.push(res); }
+            else if( res === false ) {
+               aborted = true;
+            }
+         }
+      }
+
+      if( !aborted && len == PER_PAGE ) {
+         // get next page
+         promises.push(accFiles(iterator, props, filters, path, page+1));
+      }
+
+      return Q.all(promises);
+   });
+}
 
 function acc(iterator, obj, method, props, page) {
    page || (page = 1);
@@ -66,8 +121,6 @@ function acc(iterator, obj, method, props, page) {
       if( data && data.length ) {
          var i = -1, len = data.length, res, promises = [];
          while(++i < len && !aborted) {
-            //todo iterator might need to return a promise; if it does, then this should wait for
-            //todo it to complete before declaring the promises fulfilled
             res = iterator(data[i]);
             if( Q.isPromise(res) ) {
                promises.push(res);

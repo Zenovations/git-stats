@@ -13,7 +13,7 @@ var
 
 function StatsBuilder(conf) {
    this.conf  = conf;
-   this.since = fxns.oldestInterval(conf.collect.intervals);
+   this.since = fxns.oldestInterval(conf.trends.intervals);
    this.lastUpdate = moment.utc().subtract('years', 20).startOf('year');
    //todo
    //todo retrieve cache and apply it
@@ -24,8 +24,8 @@ function StatsBuilder(conf) {
       repos: {}
    };
    this.trends = {};
-   if( conf.collect.trends ) {
-      this.trends.total = buildTrends(conf.collect); //todo cache
+   if( conf.trends.active ) {
+      this.trends.total = buildTrends(conf.trends); //todo cache
       this.trends.repos = {};
    }
    var promises = [];
@@ -46,8 +46,12 @@ StatsBuilder.prototype.addOrg = function(org) {
 StatsBuilder.prototype.addRepo = function(data) {
    var conf = this.conf, promises = [];
    if( !conf.repoFilter || conf.repoFilter(data) ) {
+
+      //todo
+      //todo apply lastUpdate and cached data
+      //todo
+
       console.log('addRepo', data.full_name);//debug
-      var collect = conf.collect;
       var repo = this.stats.repos[data.full_name] = {
          name: data.name,
          fullName: data.full_name,
@@ -61,33 +65,63 @@ StatsBuilder.prototype.addRepo = function(data) {
          stats: {
             watchers: data.watchers,
             issues: data.open_issues,
-            forks: data.forks,
-            commits: 0
+            forks: data.forks
          }
       };
 
-      if( collect.trends ) {
-         this.trends.repos[data.full_name] = buildTrends(collect); //todo cache?
-      }
-      if( collect.addsAndDeletes ) {
-         _.extend(repo.stats, { adds: 0, deletes: 0, updates: 0 });
-      }
-      if( collect.files ) {
-         _.extend(repo.stats, { files: 0, lines: 0, bytes: 0 });
-         //todo
-         //todo collect the files
-         //todo
+      if( conf.trends.active ) {
+         this.trends.repos[data.full_name] = buildTrends(conf.trends); //todo-cache
       }
 
+      _.each(conf.static, function(v, k) {
+         if( v ) {
+            switch(k) {
+               case 'changes':
+                  _.extend(repo.stats, { adds: 0, deletes: 0, updates: 0 }); //todo-cache
+                  break;
+               default:
+                  repo.stats[k] = 0; //todo-cache
+            }
+         }
+      });
+
+      var filters = _buildFileFilters(this.lastUpdate, conf);
+      promises.push( gh.files(repo.owner, repo.name, _.bind(this.addFile, this), filters) );
+
       //todo
-      //todo go collect the commits
+      //todo collect commits
       //todo
    }
    return Q.all(promises);
 };
 
-StatsBuilder.prototype.addFile = function(file) {
-   console.log('addFile', file.name);
+var gotOne = 0;
+
+StatsBuilder.prototype.addFile = function(file, repo, owner) {
+   console.log('addFile', file.name, repo, owner);
+   var stats = this.stats.repos[_repoName(owner, repo)].stats;
+
+   //todo merge static and trends and do both at same time
+   _.each(this.conf.static, function(v, k) {
+      if( v ) {
+         switch(k) {
+            case 'files':
+
+               break;
+            case 'lines':
+
+               break;
+            case 'bytes':
+
+               break;
+         }
+         //todo
+         //todo
+         //todo
+         //todo
+         //todo
+      }
+   });
    //todo
    //todo repo: files, lines, bytes
    //todo trends: files, lines, bytes
@@ -124,19 +158,21 @@ exports.load = function(conf) {
    return new StatsBuilder(conf).promise;
 };
 
-function buildTrends(collect, cache) {
+function buildTrends(conf, cache) {
    cache || (cache = {});
-   var intervals = collect.intervals;
-   var out = { commits: _trendIntervals(intervals, cache.commits) };
-   if( collect.addsAndDeletes ) {
-      out.adds = _trendIntervals(intervals, cache.adds);
-      out.deletes = _trendIntervals(intervals, cache.deletes);
-   }
-   if( collect.files ) {
-      out.files = _trendIntervals(intervals, cache.files);
-      out.lines = _trendIntervals(intervals, cache.lines);
-      out.bytes = _trendIntervals(intervals, cache.bytes);
-   }
+   var intervals = conf.intervals, out = {};
+   _.each(conf.collect, function(v, k) {
+      if( !v ) { return; }
+      switch(k) {
+         case 'changes':
+            out.adds = _trendIntervals(intervals, cache.adds);
+            out.deletes = _trendIntervals(intervals, cache.deletes);
+            out.changes = _trendIntervals(intervals, cache.changes);
+            break;
+         default:
+            out[k] = _trendIntervals(intervals, cache[k]);
+      }
+   });
    return out;
 }
 
@@ -162,4 +198,18 @@ function _interval(units, span, cached) {
 function cacheForTrend(trendSet, units) {
    var t = trendSet && trendSet[units];
    return t? _.object(_.pluck(t, 'date'), _.pluck(t, 'count')) : {};
+}
+
+function _buildFileFilters(lastUpdate, conf) {
+   var out = { since: lastUpdate };
+   _.each(['fileFilter', 'dirFilter'], function(v) {
+      if( conf[v] ) {
+         out[v] = conf[v];
+      }
+   });
+   return out;
+}
+
+function _repoName(owner, repo) {
+   return owner+'/'+repo;
 }
