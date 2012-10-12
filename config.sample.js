@@ -11,14 +11,15 @@ module.exports = {
       // this requires iterating all the files in a repo so turn it off if that info isn't useful
       files: true,
 
-      // accumulates all repo data (commits, bytes, watchers, etc) for the last 30 days/weeks/months/years
-      // allowing it to be graphed over time
-      trends: true,
-
-      // accumulates add/delete/update info for each commit action (requires one request per commit)
+      // accumulates add/delete/update info for each commit action
+      // this stat requires iterating all commits and performing one REST query per commit
       addsAndDeletes: true,
 
-      // specify how much history to collect and the time frames to collect it over
+      // track trends (stats over time) to make pretty charts, this is virtually free since we iterate all the
+      // data regardless of whether we simply compile it in static form (for the repo) or chart it over time
+      trends: true,
+
+      // when trends is true, this specifies the periods and lengths for compiled stats
       // valid keys are 'year', 'month', 'week', or 'day' and stats can be accumulated
       // over any of these intervals for any distance (the only limit is memory and cpu cycles)
       intervals: {

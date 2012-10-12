@@ -2,10 +2,25 @@
 var Q          = require('q'),
     _          = require('underscore'),
     conf       = require('./config.js'),
-    moment     = require('moment'),
-    github     = new (require('github'))({version: '3.0.0'}),
-    fxns       = require('./libs/fxns.js')(conf, github);
+    fxns       = require('./libs/fxns.js'),
+    sb         = require('./libs/StatsBuilder.js'),
+    util       = require('util');
 
+if( !conf.debug ) {
+   fxns.suppressLogs();
+}
+
+sb.load(conf)
+      .then(function(stats) {
+         console.log(stats.getTrends(conf.format, conf.compress));
+      })
+      .fail(function(e) {
+         console.error(e);
+         console.error(e.stack);
+         throw e;
+      });
+
+/**************
 var stats = {
    lastUpdated: moment.utc().format(),
    user: conf.user,
@@ -78,3 +93,4 @@ Q.fcall(fxns.ready)
       console.error(e.stack);
    });
 
+***********/
