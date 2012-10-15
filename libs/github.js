@@ -68,14 +68,11 @@ exports.files = function(owner, repo, iterator, filters) {
  * @param {string} owner
  * @param {string} repo
  * @param {string} path relative path from repo root, do not start it with /
- * @param {function} iterator called once with the file object; returning false here has no effect (see other methods)
  * @return {promise}
  */
-exports.file = function(owner, repo, path, iterator) {
+exports.file = function(owner, repo, path) {
    var opts = {user: owner, repo: repo, path: path};
-   return Q.ninvoke(gh.repos, 'getContent', opts).then(function(file) {
-      return iterator(file);
-   });
+   return Q.ninvoke(gh.repos, 'getContent', opts);
 };
 
 function accFiles(iterator, props, filters, path, page) {
@@ -92,15 +89,15 @@ function accFiles(iterator, props, filters, path, page) {
          f = files[i];
          filePath = f.path;
          if( f.type == 'dir' && (!filters.dirFilter || filters.dirFilter(f)) ) {
-            console.log('recursing to', filePath);
+            console.log('recursing to', filePath, f);
             promises.push(accFiles(iterator, props, filters, filePath));
          }
          else if( f.type == 'file' && (!filters.fileFilter || filters.fileFilter(f)) ) {
-            var res = iterator(f, props.repo, props.user);
-            if( Q.isPromise(res) ) { promises.push(res); }
-            else if( res === false ) {
-               aborted = true;
-            }
+//            var res = iterator(f, props.repo, props.user);
+//            if( Q.isPromise(res) ) { promises.push(res); }
+//            else if( res === false ) {
+//               aborted = true;
+//            }
          }
       }
 

@@ -5,36 +5,33 @@ var
    base64     = require('./base64.js'),
    gh         = require('./github.js'),
    fxns       = require('./fxns.js'),
-   inflection = require('inflection'),
    moment     = require('moment'),
    util       = require('util'),
-   nodemailer = require("nodemailer"),
-   FS         = require('fs');
+   nodemailer = require("nodemailer");
 
 function StatsBuilder(conf) {
    this.conf  = conf;
    this.since = fxns.oldestInterval(conf.trends.intervals);
    this.lastUpdate = moment.utc().subtract('years', 20).startOf('year');
-   //todo
-   //todo retrieve cache and apply it
-   //todo
-   this.stats = {
+   var cache = fxns.readCache(conf.cache_file);
+   this.stats = cache.stats || {
       lastUpdate: this.lastUpdate.format(),
       orgs: [],
       repos: {}
    };
    this.trends = {};
    if( conf.trends.active ) {
-      this.trends.total = buildTrends(conf.trends); //todo cache
+      this.trends.total = buildTrends(conf.trends, cache.trends);
       this.trends.repos = {};
    }
-   var promises = [];
-   promises.push( gh.repos(conf.user, _.bind(this.addRepo, this)) );
-   promises.push( gh.orgs( conf.user, _.bind(this.addOrg,  this)) );
-   this.promise = Q.all(promises).then(_.bind(function() {
-      fxns.cache({stats: this.stats, trends: this.trends}, conf.cache_file);
-      return this;
-   }, this));
+   console.log(util.inspect(this.stats, false, 5, true));
+//   var promises = [];
+//   promises.push( gh.repos(conf.user, _.bind(this.addRepo, this)) );
+//   promises.push( gh.orgs( conf.user, _.bind(this.addOrg,  this)) );
+//   this.promise = Q.all(promises).then(_.bind(function() {
+//      fxns.cache({stats: this.stats, trends: this.trends}, conf.cache_file);
+//      return this;
+//   }, this));
 }
 
 StatsBuilder.prototype.addOrg = function(org) {
@@ -51,7 +48,7 @@ StatsBuilder.prototype.addRepo = function(data) {
       //todo apply lastUpdate and cached data
       //todo
 
-      console.log('addRepo', data.full_name);//debug
+      console.log('addRepo', data.full_name, data.updated_at);//debug
       var repo = this.stats.repos[data.full_name] = {
          name: data.name,
          fullName: data.full_name,
@@ -85,8 +82,9 @@ StatsBuilder.prototype.addRepo = function(data) {
          }
       });
 
-      var filters = _buildFileFilters(this.lastUpdate, conf);
-      promises.push( gh.files(repo.owner, repo.name, _.bind(this.addFile, this), filters) );
+      //todo only collect files if we're building the initial stats
+//      var filters = _buildFileFilters(this.lastUpdate, conf);
+//      promises.push( gh.files(repo.owner, repo.name, _.bind(this.addFile, this), filters) );
 
       //todo
       //todo collect commits
@@ -98,18 +96,21 @@ StatsBuilder.prototype.addRepo = function(data) {
 var gotOne = 0;
 
 StatsBuilder.prototype.addFile = function(file, repo, owner) {
-   console.log('addFile', file.name, repo, owner);
-   var stats = this.stats.repos[_repoName(owner, repo)].stats;
+   console.log('addFile', file.name, repo, owner, file);
+   var stats = this.stats.repos[_repoName(owner, repo)].stats,
+       def = needsFileDetails(this.conf)? gh.file(owner, repo, file.path) : null;
 
    //todo merge static and trends and do both at same time
    _.each(this.conf.static, function(v, k) {
       if( v ) {
          switch(k) {
             case 'files':
-
+               stats.files++;
                break;
             case 'lines':
-
+               def.then(function(file) {
+                  stats.lines += base64.decode(file.content).split("\n").length;
+               });
                break;
             case 'bytes':
 
@@ -122,9 +123,12 @@ StatsBuilder.prototype.addFile = function(file, repo, owner) {
          //todo
       }
    });
+
    //todo
    //todo repo: files, lines, bytes
    //todo trends: files, lines, bytes
+
+   return def? def.promise : null;
 };
 
 StatsBuilder.prototype.addCommit = function(commit) {
@@ -212,4 +216,12 @@ function _buildFileFilters(lastUpdate, conf) {
 
 function _repoName(owner, repo) {
    return owner+'/'+repo;
+}
+
+function needsFileDetails(conf) {
+   return conf.static.bytes || conf.static.lines || conf.trends.bytes || conf.trends.lines;
+}
+
+function needsCommitDetails(conf) {
+   return conf.static.changes || conf.trends.changes;
 }

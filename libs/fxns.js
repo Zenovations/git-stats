@@ -208,6 +208,10 @@ fxns.startOf = function(when, units) {
    }
 };
 
+fxns.readCache = function(path) {
+   return FS.existsSync(path)? JSON.parse(FS.readFileSync(path)) : {};
+};
+
 function prepArraysForXml(data) {
    if( _.isArray(data) ) {
       var i = data.length;
