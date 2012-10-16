@@ -1,10 +1,11 @@
 
 # git-stats
 
-<span style="color: red">**This might be useful to others but it's by no means meant as a plug-and-play lib; fork and modify as you desire.**</span>
+I built this to retrieve interesting stats about my GitHub projects and stuf them into a useful json data file, so I can hook
+this to a Cron Job or GitHub hook and build some charts on my site.
 
-Retrieve interesting stats about my GitHub projects and stuf them into a useful json data file, so I can hook
-this to a Cron Job or GitHub hook and keep them up-to-date on my site.
+It can parse some pretty big repos without any trouble, even if so many requests must be made that GitHub's rate limits
+will kick in (it will simply stop when the rate limit is exceeded and pick where it left off on the next run).
 
 ## Installation
 
@@ -21,6 +22,11 @@ this to a Cron Job or GitHub hook and keep them up-to-date on my site.
 //todo all times are in utc
 //todo examples
 //todo demo (online example)
+
+## Limitations
+
+Doesn't support OAuth
+
 
 ## License
 

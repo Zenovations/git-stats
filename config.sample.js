@@ -5,6 +5,12 @@ module.exports = {
    // required: the account we're going to collect stats for
    user: USER,
 
+   // Optional, but without a password, GitHub limits API calls to 60 per hour; it's going to be pretty
+   // rocky collecting stats on any sizable project with only 60 requests. Generally you'll want a password.
+   // But small repos or aggressive filtering may work okay without.
+   // We can't see private repositories unless we log in.
+   pass: null,
+
    // how shall we output the data?
    format: 'json', // 'json', 'xml', or 'csv'
 
@@ -85,7 +91,7 @@ module.exports = {
     * @return {boolean}
     */
    repoFilter: function(repo) {
-      return !repo.fork && !repo.name.match(/^[._~-]/);
+      return !repo.fork && !repo.name.match(/^[._~-]/) && repo.type == 'public';
    },
 
    /**

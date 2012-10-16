@@ -12,6 +12,11 @@ var   Q          = require('q'),
 var PER_PAGE = 100;
 
 var gh = new GitHubApi({version: '3.0.0'});
+var auth = null;
+
+exports.auth = function(user, pass) {
+   auth = {username: user, password: pass};
+};
 
 /**
  * @param {string} user the GitHub user to retrieve orgs for
@@ -19,7 +24,7 @@ var gh = new GitHubApi({version: '3.0.0'});
  * @return {promise}
  */
 exports.orgs = function(user, iterator) {
-   return acc(iterator, gh.orgs, 'getFromUser', {user: user});
+   return acc(iterator, scope, 'getFromUser', {user: user});
 };
 
 /**
@@ -111,6 +116,13 @@ function accFiles(iterator, props, filters, path, page) {
 }
 
 function acc(iterator, obj, method, props, page) {
+   //todo
+   //todo apply authentication
+   //todo
+   //todo
+   //todo
+   //todo
+   //todo
    page || (page = 1);
    var opts = _.extend({}, props, {per_page: PER_PAGE, page: page});
    return Q.ninvoke(obj, method, opts).then(function(data) {

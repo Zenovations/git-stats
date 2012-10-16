@@ -12,7 +12,7 @@ if( !conf.debug ) {
 
 sb.load(conf)
       .then(function(stats) {
-         console.log(stats.getStats(conf.format, conf.compress));
+         console.log(util.inspect(fxns.removeZeroTrends({stats: JSON.parse(stats.getStats(conf.format, conf.compress)), trends: JSON.parse(stats.getTrends(conf.format, conf.compress))}), false, 10, true));
       })
       .fail(function(e) {
          console.error(e);

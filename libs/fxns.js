@@ -4,11 +4,11 @@ var json2csv    = require('json2csv');
 var inflection  = require('inflection');
 var FS          = require('fs');
 var moment      = require('moment');
-var Q          = require('q');
-var _          = require('underscore');
-var base64     = require('./base64.js');
-var util       = require('util');
-var nodemailer = require("nodemailer");
+var Q           = require('q');
+var _           = require('underscore');
+var base64      = require('./base64.js');
+var util        = require('util');
+var nodemailer  = require("nodemailer");
 
 var VALID_EMAIL = /((([a-z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])+(\.([a-z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])+)*)|((\x22)((((\x20|\x09)*(\x0d\x0a))?(\x20|\x09)+)?(([\x01-\x08\x0b\x0c\x0e-\x1f\x7f]|\x21|[\x23-\x5b]|[\x5d-\x7e]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(\\([\x01-\x09\x0b\x0c\x0d-\x7f]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF]))))*(((\x20|\x09)*(\x0d\x0a))?(\x20|\x09)+)?(\x22)))@((([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.)+(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.?/;
 
@@ -164,11 +164,22 @@ fxns.sendEmail = function(to, message) {
  */
 fxns.cache = function(stats, cacheFileName) {
    if( cacheFileName ) {
-      FS.writeFile(cacheFileName, JSON.stringify(stats), function (err) {
+      var cache = clearZeroTrends(stats);
+      console.log('caching', util.inspect(cache, false, 10, true));
+      FS.writeFile(cacheFileName, JSON.stringify(cache), function (err) {
          if (err) throw err;
          console.log('stats cached in ', cacheFileName);
       });
    }
+};
+
+/**
+ * Removes trends which have a zero value for brevity
+ * @param {object} stats is modified by this call!
+ * @return {object} the stats object
+ */
+fxns.removeZeroTrends = function(stats) {
+   return clearZeroTrends(stats);
 };
 
 fxns.writeFile = function(filename, data) {
@@ -209,7 +220,13 @@ fxns.startOf = function(when, units) {
 };
 
 fxns.readCache = function(path) {
-   return FS.existsSync(path)? JSON.parse(FS.readFileSync(path)) : {};
+   try {
+      return FS.existsSync(path)? JSON.parse(FS.readFileSync(path)) : null;
+   }
+   catch(e) {
+      console.error(e);
+      return null;
+   }
 };
 
 function prepArraysForXml(data) {
@@ -256,5 +273,19 @@ function prepReposForXml(stats) {
       }
       stats.repos = arr;
    }
+   return stats;
+}
+
+function clearZeroTrends(stats) {
+   _.each(stats, function(v, k) {
+      if( _.isArray(v) && k in {'years': 1, 'months': 1, 'weeks': 1, 'days': 1} ) {
+         stats[k] = _.filter(v, function(v) {
+            return _.last(v) > 0;
+         });
+      }
+      else if(_.isObject(v) ) {
+         clearZeroTrends(v);
+      }
+   });
    return stats;
 }

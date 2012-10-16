@@ -13,25 +13,30 @@ function StatsBuilder(conf) {
    this.conf  = conf;
    this.since = fxns.oldestInterval(conf.trends.intervals);
    this.lastUpdate = moment.utc().subtract('years', 20).startOf('year');
-   var cache = fxns.readCache(conf.cache_file);
-   this.stats = cache.stats || {
-      lastUpdate: this.lastUpdate.format(),
+   this.cache = fxns.readCache(conf.cache_file) || { stats: { repos: {} }, trends: { repos: {} } };
+   console.log('cache', util.inspect(this.cache, false, 10, true));
+   this.stats = {
+      lastUpdate: this.cache.stats.lastUpdate || this.lastUpdate.format(),
       orgs: [],
       repos: {}
    };
    this.trends = {};
    if( conf.trends.active ) {
-      this.trends.total = buildTrends(conf.trends, cache.trends);
-      this.trends.repos = {};
+      this.trends.total = buildTrends(conf.trends, this.cache.trends.total);
+      if( conf.trends.repos ) {
+         this.trends.repos = {};
+      }
    }
-   console.log(util.inspect(this.stats, false, 5, true));
-//   var promises = [];
+//   console.log(util.inspect(this.stats, false, 5, true));
+//   console.log(util.inspect(this.trends, false, 5, true));
+   var promises = [];
 //   promises.push( gh.repos(conf.user, _.bind(this.addRepo, this)) );
 //   promises.push( gh.orgs( conf.user, _.bind(this.addOrg,  this)) );
-//   this.promise = Q.all(promises).then(_.bind(function() {
+   this.promise = Q.all(promises).then(_.bind(function() {
+      //debug
 //      fxns.cache({stats: this.stats, trends: this.trends}, conf.cache_file);
-//      return this;
-//   }, this));
+      return this;
+   }, this));
 }
 
 StatsBuilder.prototype.addOrg = function(org) {
@@ -44,40 +49,52 @@ StatsBuilder.prototype.addRepo = function(data) {
    var conf = this.conf, promises = [];
    if( !conf.repoFilter || conf.repoFilter(data) ) {
 
-      //todo
-      //todo apply lastUpdate and cached data
-      //todo
+      var repoName = data.full_name;
+      if( conf.trends.active && conf.trends.repos ) {
+         // set up the trends entries, we don't use any cached data because the keys change based on when this runs
+         // so build the keys from scratch and then apply cache to any matching keys
+         this.trends.repos[repoName] = buildTrends(conf.trends, this.cache.trends.repos[repoName]);
+      }
 
-      console.log('addRepo', data.full_name, data.updated_at);//debug
-      var repo = this.stats.repos[data.full_name] = {
-         name: data.name,
-         fullName: data.full_name,
-         size: data.size,
-         created: data.created_at,
-         updated: data.updated_at,
-         description: data.description,
-         homepage: data.homepage,
-         url: data.html_url,
-         owner: data.owner.login || data.owner.name,
-         stats: {
-            watchers: data.watchers,
-            issues: data.open_issues,
-            forks: data.forks
-         }
-      };
+      if( !this.cache.stats.repos[repoName] ) {
+         // the repo doesn't exist in our cache, so we need to load initial stats data
+         console.log('INITIALIZING REPO', repoName, data.updated_at);//debug
+         var repo = this.stats.repos[repoName] = {
+            name: data.name,
+            fullName: repoName,
+            size: data.size,
+            created: data.created_at,
+            updated: data.updated_at,
+            description: data.description,
+            homepage: data.homepage,
+            lastCommitRead: null,
+            url: data.html_url,
+            owner: data.owner.login || data.owner.name,
+            stats: {
+               watchers: data.watchers,
+               issues: data.open_issues,
+               forks: data.forks
+            }
+         };
+      }
+      else {
+         console.log('updating repo', repoName, data.updated_at);//debug
+         // if the repo already exists, we just update the cached version with any new commit data
 
-      if( conf.trends.active ) {
-         this.trends.repos[data.full_name] = buildTrends(conf.trends); //todo-cache
       }
 
       _.each(conf.static, function(v, k) {
          if( v ) {
             switch(k) {
                case 'changes':
-                  _.extend(repo.stats, { adds: 0, deletes: 0, updates: 0 }); //todo-cache
+                  _.each(['adds', 'deletes', 'updates'], function(v) {
+                     if( !_.has(repo.stats, v) ) {
+                        repo.stats[v] = 0;
+                     }
+                  });
                   break;
                default:
-                  repo.stats[k] = 0; //todo-cache
+                  _.has(repo.stats, k) || (repo.stats[k] = 0);
             }
          }
       });
@@ -113,8 +130,26 @@ StatsBuilder.prototype.addFile = function(file, repo, owner) {
                });
                break;
             case 'bytes':
-
+               //todo
+               //todo
+               //todo
+               //todo
+               //todo
                break;
+            case 'commits':
+               //todo
+               //todo
+               //todo
+               //todo
+               break;
+            case 'changes':
+               //todo
+               //todo
+               //todo
+               //todo
+               break;
+            default:
+               throw new Error('invalid configuration key '+k);
          }
          //todo
          //todo
@@ -201,7 +236,7 @@ function _interval(units, span, cached) {
 
 function cacheForTrend(trendSet, units) {
    var t = trendSet && trendSet[units];
-   return t? _.object(_.pluck(t, 'date'), _.pluck(t, 'count')) : {};
+   return t? _.object(t) : {};
 }
 
 function _buildFileFilters(lastUpdate, conf) {
