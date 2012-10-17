@@ -20,25 +20,34 @@ module.exports = {
    //to: 'user@gmail.com',           // send results via email
 
    // controls stats collected for each repository as of today; does not include any historical data for comparison
-   // watchers, issues, and forks are essentially free (one request per repo), the items configurable here come
+   // watchers, issues, and forks are essentially free (one request per repo), the other items configurable here come
    // with some overhead to retrieve
    static: {
-      // count the number of commits submitted to the repo (requires roughly one request per 100 commits)
+      // number of githubbers watching the repo (requires no additional requests)
+      watchers: true,
+
+      // number of open issues for the repo (requires no additional requests)
+      issues: true,
+
+      // number of repository forks (requires no additional requests)
+      forks: true,
+
+      // number of commits submitted to the repo (requires roughly one request per 100 commits)
       commits: true,
 
-      // count how many files are in the repo (requires one request per 100 commits)
+      // how many files are in the repo (requires one request per 100 commits)
       files: true,
 
-      // count total bytes of all files in the repo (requires one request per commit)
+      // total bytes of all files in the repo (requires one request per commit)
       bytes: true,
 
-      // collect statistics on how many lines of code are in the repo (requires one request per commit)
+      // how many lines of code are in the repo (requires one request per commit)
       lines: true,
 
-      // accumulate number of lines added during each commit action (requires one request per commit)
+      // number of lines added during each commit action (requires one request per commit)
       adds: true,
 
-      // accumulate number of lines deleted during each commit action (requires one request per commit)
+      // number of lines deleted during each commit action (requires one request per commit)
       deletes: true
    },
 
@@ -57,6 +66,15 @@ module.exports = {
       repos: true,
 
       collect: {
+         // number of githubbers watching the repo (requires no additional requests)
+         watchers: true,
+
+         // number of open issues for the repo (requires no additional requests)
+         issues: true,
+
+         // number of repository forks (requires no additional requests)
+         forks: true,
+
          // count the number of commits submitted to the repo (requires roughly one request per 100 commits)
          commits: true,
 
@@ -99,7 +117,7 @@ module.exports = {
     * @return {boolean}
     */
    repoFilter: function(repo) {
-      return !repo.fork && !repo.name.match(/^[._~-]/) && repo.type == 'public';
+      return !repo.fork && !repo.name.match(/^[._~-]/) && !repo.private;
    },
 
    /**

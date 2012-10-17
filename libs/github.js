@@ -3,11 +3,9 @@ var   Q          = require('q'),
       _          = require('underscore'),
       base64     = require('./base64.js'),
       GitHubApi  = require('github'),
-      inflection = require('inflection'),
       moment     = require('moment'),
       util       = require('util'),
-      nodemailer = require("nodemailer"),
-      FS         = require('fs');
+      nodemailer = require("nodemailer");
 
 var PER_PAGE = 100;
 
@@ -26,7 +24,6 @@ function GitHubWrapper(user, pass) {
 }
 
 /**
- * @param {string} user the GitHub user to retrieve orgs for
  * @param {function} iterator called once with each org object, if this function returns {boolean}false, iteration is aborted
  * @return {promise}
  */
@@ -35,14 +32,13 @@ GitHubWrapper.prototype.orgs = function(iterator) {
 };
 
 /**
- * @param {string} user
  * @param {string} [org]
  * @param {function} iterator called once with each repo object, if this function returns {boolean}false, iteration is aborted
  * @return {promise}
  */
 GitHubWrapper.prototype.repos = function(org, iterator) {
    if( typeof(org) === 'function' ) {
-      iterator = arguments[1];
+      iterator = arguments[0];
       org = null;
    }
    var options = {user: this.user};
@@ -51,7 +47,7 @@ GitHubWrapper.prototype.repos = function(org, iterator) {
    return acc(this.auth, iterator, this.gh.repos, method, options);
 };
 
-GitHubWrapper.prototype.commits = function(owner, repo, iterator) {
+GitHubWrapper.prototype.commits = function(owner, repo, iterator, since) {
    //todo
    //todo
    //todo
@@ -63,70 +59,70 @@ GitHubWrapper.prototype.commit = function(owner, repo, sha) {
    //todo
 };
 
-/**
- * @param {string} owner
- * @param {string} repo
- * @param {function} iterator called once with each repo object, if this function returns {boolean}false, iteration is aborted
- * @param {object} [filters] may contain any of {moment}since, {function}dirFilter, {function}fileFilter
- * @return {promise}
- */
-GitHubWrapper.prototype.files = function(owner, repo, iterator, filters) {
-   var opts = {user: owner, repo: repo};
-   return accFiles(this.auth, iterator, opts, filters);
-};
+///**
+// * @param {string} owner
+// * @param {string} repo
+// * @param {function} iterator called once with each repo object, if this function returns {boolean}false, iteration is aborted
+// * @param {object} [filters] may contain any of {moment}since, {function}dirFilter, {function}fileFilter
+// * @return {promise}
+// */
+//GitHubWrapper.prototype.files = function(owner, repo, iterator, filters) {
+//   var opts = {user: owner, repo: repo};
+//   return accFiles(this.auth, iterator, opts, filters);
+//};
+//
+///**
+// * @param {string} owner
+// * @param {string} repo
+// * @param {string} path relative path from repo root, do not start it with /
+// * @return {promise}
+// */
+//GitHubWrapper.prototype.file = function(owner, repo, path) {
+//   var opts = {user: owner, repo: repo, path: path};
+//   this.auth();
+//   return Q.ninvoke(this.gh.repos, 'getContent', opts);
+//};
 
-/**
- * @param {string} owner
- * @param {string} repo
- * @param {string} path relative path from repo root, do not start it with /
- * @return {promise}
- */
-GitHubWrapper.prototype.file = function(owner, repo, path) {
-   var opts = {user: owner, repo: repo, path: path};
-   this.auth();
-   return Q.ninvoke(this.gh.repos, 'getContent', opts);
-};
-
-function accFiles(auth, iterator, props, filters, path, page) {
-   auth();
-   page || (page = 1);
-   filters || (filters = {});
-   var opts = _.extend({}, props, {per_page: PER_PAGE, page: page}, {path: path || ''});
-   return Q.ninvoke(gh.repos, 'getContent', opts).then(function(files) {
-      var promises = [], i = -1, len = files.length, filePath, f, aborted;
-      while(++i < len && !aborted) {
-         //todo
-         //todo filter.since!
-         //todo
-
-         f = files[i];
-         filePath = f.path;
-         if( f.type == 'dir' && (!filters.dirFilter || filters.dirFilter(f)) ) {
-            console.log('recursing to', filePath, f);
-            promises.push(accFiles(auth, iterator, props, filters, filePath));
-         }
-         else if( f.type == 'file' && (!filters.fileFilter || filters.fileFilter(f)) ) {
-//            var res = iterator(f, props.repo, props.user);
-//            if( Q.isPromise(res) ) { promises.push(res); }
-//            else if( res === false ) {
-//               aborted = true;
-//            }
-         }
-      }
-
-      if( !aborted && len == PER_PAGE ) {
-         // get next page
-         promises.push(accFiles(auth, iterator, props, filters, path, page+1));
-      }
-
-      return Q.all(promises);
-   });
-}
+//function accFiles(auth, iterator, props, filters, path, page) {
+//   auth();
+//   page || (page = 1);
+//   filters || (filters = {});
+//   var opts = _.extend({}, props, {per_page: PER_PAGE, page: page}, {path: path || ''});
+//   return Q.ninvoke(gh.repos, 'getContent', opts).then(function(files) {
+//      var promises = [], i = -1, len = files.length, filePath, f, aborted;
+//      while(++i < len && !aborted) {
+//         //todo
+//         //todo filter.since!
+//         //todo
+//
+//         f = files[i];
+//         filePath = f.path;
+//         if( f.type == 'dir' && (!filters.dirFilter || filters.dirFilter(f)) ) {
+//            console.log('recursing to', filePath, f);
+//            promises.push(accFiles(auth, iterator, props, filters, filePath));
+//         }
+//         else if( f.type == 'file' && (!filters.fileFilter || filters.fileFilter(f)) ) {
+////            var res = iterator(f, props.repo, props.user);
+////            if( Q.isPromise(res) ) { promises.push(res); }
+////            else if( res === false ) {
+////               aborted = true;
+////            }
+//         }
+//      }
+//
+//      if( !aborted && len == PER_PAGE ) {
+//         // get next page
+//         promises.push(accFiles(auth, iterator, props, filters, path, page+1));
+//      }
+//
+//      return Q.all(promises);
+//   });
+//}
 
 function auth(gh, user, pass) {
    if( pass ) {
       return function() {
-         gh.auth({username: user, password: pass});
+         gh.authenticate({type: 'basic', username: user, password: pass});
       }
    }
    else {
@@ -139,32 +135,42 @@ function acc(auth, iterator, obj, method, props, page) {
    page || (page = 1);
    var opts = _.extend({}, props, {per_page: PER_PAGE, page: page});
    return Q.ninvoke(obj, method, opts).then(function(data) {
-      var aborted = false;
+      var status = 'success', meta = (data && data.meta) || {};
       if( data && data.length ) {
          var i = -1, len = data.length, res, promises = [];
-         while(++i < len && !aborted) {
+         while(++i < len && status === 'success') {
             // run the iterator with each page, check it for a promise and store it if one is found
-            res = iterator(data[i]);
+            res = iterator(data[i], meta);
             if( Q.isPromise(res) ) {
                promises.push(res);
             }
-            else {
-               aborted =  res === false;
+            else if( res === false ) {
+               status = 'aborted';
             }
          }
          return Q.all(promises).then(function() {
             // conduct pagination but wait for all the iterator promises to resolve first; this is a safety measure
             // since something in the current page could affect what we do with the remainder of the data
-            if( !aborted && len == PER_PAGE ) {
+            if( status === 'success' && len == PER_PAGE ) {
                return acc(auth, iterator, obj, method, props, page+1);
             }
             else {
-               return aborted;
+               return status;
             }
          });
       }
-      return aborted;
+      return status;
    });
 }
+
+var RateLimitError = function (msg, repo, sha) {
+   Error.captureStackTrace(this, RateLimitError);
+   this.message = msg || 'Error';
+   this.repo = repo;
+   this.sha = sha;
+};
+util.inherits(RateLimitError, Error);
+RateLimitError.prototype.name = 'RateLimitError';
+GitHubWrapper.RateLimitError = RateLimitError;
 
 module.exports = GitHubWrapper;

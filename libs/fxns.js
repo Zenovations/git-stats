@@ -228,25 +228,24 @@ fxns.readCache = function(path) {
    }
 };
 
-fxns.analyzePatch = function(patch, withBytes) {
-   withBytes === false || (withBytes = true);
-   var out = { lines: { added: 0, deleted: 0 } };
-   withBytes && (out.bytes = { added: 0, deleted: 0 });
+fxns.analyzePatch = function(patch) {
+   var out = { added: 0, deleted: 0 };
    _.each(patch.split("\n"), function(v) {
       var m = v.match(/^([+-])(.*)/);
-      switch(m) {
-         case '+':
-            out.lines.added++;
-            withBytes && (out.bytes.added += _bytes(m[2]));
-            break;
-         case '-':
-            out.lines.deleted++;
-            withBytes && (out.bytes.deleted += _bytes(m[2]));
-            break;
-         default:
-            //nothing to do unless it's a change
+      if( m ) {
+         switch(m[1]) {
+            case '+':
+               out.added += _bytes(m[2]);
+               break;
+            case '-':
+               out.deleted += _bytes(m[2]);
+               break;
+            default:
+               throw new Error('this line cannot be reached');
+         }
       }
    });
+   out.diff = out.added - out.deleted;
    return out;
 };
 

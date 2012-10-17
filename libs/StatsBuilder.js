@@ -10,13 +10,13 @@ var
    nodemailer = require("nodemailer");
 
 function StatsBuilder(conf) {
-   this.gh = new GitHubWrap(conf.user, conf.pass);
+   this.gh = new GitHubWrap(conf.user, conf.pass, _.bind(this.rateLimitExceeded, this));
    this.conf  = conf;
    this.since = fxns.oldestInterval(conf.trends.intervals);
-   this.lastUpdate = moment.utc().subtract('years', 20).startOf('year');
    this.cache = fxns.readCache(conf.cache_file) || { stats: { repos: {} }, trends: { repos: {} } };
+   this.lastUpdate = moment(this.cache.stats.lastUpdate).utc().subtract('years', 100);
    this.stats = {
-      lastUpdate: this.cache.stats.lastUpdate || this.lastUpdate.format(),
+      lastUpdate: this.cache.stats.lastUpdate,
       orgs: [],
       repos: {}
    };
@@ -31,13 +31,19 @@ function StatsBuilder(conf) {
 //   console.log(util.inspect(this.stats, false, 5, true));
 //   console.log(util.inspect(this.trends, false, 5, true));
    var promises = [];
-//   promises.push( this.gh.repos(_.bind(this.addRepo, this)) );
-//   promises.push( this.gh.orgs(_.bind(this.addOrg,  this)) );
-   this.promise = Q.all(promises).then(_.bind(function() {
-      //debug
-//      fxns.cache({stats: this.stats, trends: this.trends}, conf.cache_file);
-      return this;
-   }, this));
+   promises.push( this.gh.repos(_.bind(this.addRepo, this)) );
+   promises.push( this.gh.orgs(_.bind(this.addOrg,  this)) );
+   this.promise = Q.all(promises)
+      .then(_.bind(function(result) {
+         //debug
+//         fxns.cache({stats: this.stats, trends: this.trends}, conf.cache_file);
+         return this;
+      }, this))
+      .fail(_.bind(function(e, sha) {
+         if( e === 'rate limit exceeded' ) {
+
+         }
+      }, this));
 }
 
 StatsBuilder.prototype.addOrg = function(org) {
@@ -47,8 +53,8 @@ StatsBuilder.prototype.addOrg = function(org) {
 };
 
 StatsBuilder.prototype.addRepo = function(data) {
-   var conf = this.conf, promises = [], oldStats = {};
-   if( !conf.repoFilter || conf.repoFilter(data) ) {
+   var conf = this.conf, promises = [], oldStats = {}, when = moment(data.last_updated);
+   if( this.lastUpdate.diff(when) < 0 && (!conf.repoFilter || conf.repoFilter(data)) ) {
 
       var repoName = data.full_name;
       if( conf.trends.active && conf.trends.repos ) {
@@ -68,41 +74,54 @@ StatsBuilder.prototype.addRepo = function(data) {
             updated: data.updated_at,
             description: data.description,
             homepage: data.homepage,
-            lastCommitRead: null,
+            lastCommit: null,
             url: data.html_url,
             owner: data.owner.login || data.owner.name,
-            stats: {
-               watchers: data.watchers,
-               issues: data.open_issues,
-               forks: data.forks
-            }
+            stats: {} // always clear stats (config may change)
          };
+
+         oldStats = {
+            watchers: data.watchers,
+            issues: data.open_issues,
+            forks: data.forks
+         }
       }
       else {
          console.log('UPDATE', repoName, data.updated_at);
          // if the repo already exists, we just update the cached version with any new commit data
          repo = this.cache.stats.repos[repoName];
-         oldStats = repo.stats;
+         // cache old stats
+         oldStats = _.extend({}, repo.stats, {
+            watchers: data.watchers,
+            issues: data.open_issues,
+            forks: data.forks
+         });
+         // always clear stats (config may change)
          repo.stats = {};
       }
 
+      //todo
+      //todo
+      //todo
+      //todo
+      //todo
+      //todo
+      //todo store watchers/issues/forks in trends
+
+      //todo
+      //todo
+      //todo
+      //todo
+      //todo
+      //todo
+      //todo deal with cases where rate limit was exceeded and we need to resume
+
       _.each(conf.static, function(v, k) {
          if( v ) {
-            switch(k) {
-               case 'changes':
-                  _.each(['adds', 'deletes', 'updates'], function(v) {
-                     if( !_.has(repo.stats, v) ) {
-                        repo.stats[v] = oldStats[k] || 0;
-                     }
-                  });
-                  break;
-               default:
-                  repo.stats[k] = oldStats[k] || 0;
-            }
+            repo.stats[k] = oldStats[k] || 0;
          }
       });
 
-      //todo only collect files if we're building the initial stats
 //      var filters = _buildFileFilters(this.lastUpdate, conf);
 //      promises.push( this.gh.files(repo.owner, repo.name, _.bind(this.addFile, this), filters) );
 
@@ -110,22 +129,22 @@ StatsBuilder.prototype.addRepo = function(data) {
       //todo collect commits
       //todo
    }
+   else { console.log('skipped', data.full_name); }//debug
    return Q.all(promises);
 };
 
-var gotOne = 0;
-
-StatsBuilder.prototype.addFile = function(file, repo, owner) {
-   console.log('  F', file.name, repo, owner, file);
-   var stats = this.stats.repos[_repoName(owner, repo)].stats,
-       def = needsFileDetails(this.conf)? this.gh.file(owner, repo, file.path) : null;
-
-   //todo
-   //todo repo: files, lines, bytes, commits, changes
-   //todo trends: files, lines, bytes, commits, changes
-
-   return def? def.promise : null;
-};
+//var gotOne = 0;
+//StatsBuilder.prototype.addFile = function(file, repo, owner) {
+//   console.log('  F', file.name, repo, owner, file);
+//   var stats = this.stats.repos[_repoName(owner, repo)].stats,
+//       def = needsFileDetails(this.conf)? this.gh.file(owner, repo, file.path) : null;
+//
+//   //todo
+//   //todo repo: files, lines, bytes, commits, changes
+//   //todo trends: files, lines, bytes, commits, changes
+//
+//   return def? def.promise : null;
+//};
 
 StatsBuilder.prototype.addCommit = function(commit) {
    console.log('  C', commit.sha);
@@ -136,7 +155,7 @@ StatsBuilder.prototype.addCommit = function(commit) {
    //todo
 };
 
-StatsBuilder.prototype.addCommitDetail = function(commitDetail) {
+StatsBuilder.prototype.applyCommitDetail = function(commit, commitDetail) {
    console.log('  CC', commitDetail.sha);
    //todo
    //todo repo: adds/deletes/updates
@@ -163,14 +182,7 @@ function buildTrends(conf, cache) {
    var intervals = conf.intervals, out = {};
    _.each(conf.collect, function(v, k) {
       if( !v ) { return; }
-      switch(k) {
-         case 'changes':
-            out.adds = _trendIntervals(intervals, cache.adds);
-            out.deletes = _trendIntervals(intervals, cache.deletes);
-            break;
-         default:
-            out[k] = _trendIntervals(intervals, cache[k]);
-      }
+      out[k] = _trendIntervals(intervals, cache[k]);
    });
    return out;
 }
@@ -218,52 +230,9 @@ function needsFileDetails(conf) {
 }
 
 function needsCommitDetails(conf, isUpdate) {
-   var list = ['files', 'lines', 'bytes', 'changes'];
+   var list = ['lines', 'bytes', 'adds', 'deletes'];
    function _check(v, k) {
       return v && _.indexOf(list, k) >= 0;
    }
    return _.any(conf.static, _check) || _.any(conf.trends.collect, _check);
-}
-
-function applyFileStats(file, stats, collectFields) {
-   _.each(collectFields, function(v, k) {
-      if( v ) {
-         switch(k) {
-            case 'files':
-               stats.files++;
-               break;
-            case 'lines':
-               def.then(function(file) {
-                  stats.lines += base64.decode(file.content).split("\n").length;
-               });
-               break;
-            case 'bytes':
-               //todo
-               //todo
-               //todo
-               //todo
-               //todo
-               break;
-            case 'commits':
-               //todo
-               //todo
-               //todo
-               //todo
-               break;
-            case 'changes':
-               //todo
-               //todo
-               //todo
-               //todo
-               break;
-            default:
-               throw new Error('invalid configuration key '+k);
-         }
-         //todo
-         //todo
-         //todo
-         //todo
-         //todo
-      }
-   });
 }
