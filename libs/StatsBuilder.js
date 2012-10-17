@@ -167,7 +167,6 @@ function buildTrends(conf, cache) {
          case 'changes':
             out.adds = _trendIntervals(intervals, cache.adds);
             out.deletes = _trendIntervals(intervals, cache.deletes);
-            out.changes = _trendIntervals(intervals, cache.changes);
             break;
          default:
             out[k] = _trendIntervals(intervals, cache[k]);

@@ -20,28 +20,33 @@ module.exports = {
    //to: 'user@gmail.com',           // send results via email
 
    // controls stats collected for each repository as of today; does not include any historical data for comparison
-   // watchers, issues, and forks are essentially free, the items configurable here come with some overhead to retrieve
+   // watchers, issues, and forks are essentially free (one request per repo), the items configurable here come
+   // with some overhead to retrieve
    static: {
       // count the number of commits submitted to the repo (requires roughly one request per 100 commits)
       commits: true,
 
-      // count how many files are in the repo (requires one request per directory)
+      // count how many files are in the repo (requires one request per 100 commits)
       files: true,
 
-      // count total bytes of all files in the repo (requires one request per directory)
+      // count total bytes of all files in the repo (requires one request per commit)
       bytes: true,
 
-      // collect statistics on how many lines of code are in the repo (requires one request per file)
+      // collect statistics on how many lines of code are in the repo (requires one request per commit)
       lines: true,
 
-      // accumulates add/delete/update info for each commit action (requires one request per commit)
-      changes: true
+      // accumulate number of lines added during each commit action (requires one request per commit)
+      adds: true,
+
+      // accumulate number of lines deleted during each commit action (requires one request per commit)
+      deletes: true
    },
 
-   // this is the historical data used for comparisons (make pretty charts!), the calculations are done at the same
-   // time as the static stats, so there is only a small overhead to store the additional figures, however,
-   // this greatly increases the cache size and memory usage (although they should still be practical for most
-   // repositories)
+   // this is the historical data used for comparisons (make pretty charts!)
+   // the file size and memory usage can be roughly calculated using this pseudo-formula:
+   // bytes = number_of_repos * sum(trends.intervals) * 40 bytes (64bit number + ISO formatted date string + json syntax)
+   // For example, storing trends for 100 GitHub repositories over {years: 10, months: 12, weeks: 25, days: 30}
+   // would be: 708kb or `100 * (10 + 12 + 25 + 30) * 40`
    trends: {
 
       // setting this to false will turn off historical data and make people who like analytics very sad
@@ -55,17 +60,20 @@ module.exports = {
          // count the number of commits submitted to the repo (requires roughly one request per 100 commits)
          commits: true,
 
-         // count how many files are in the repo (requires one request per directory)
+         // count how many files are in the repo (requires one request per commit)
          files: true,
 
-         // count total bytes of all files in the repo (requires one request per directory)
+         // count total bytes of all files in the repo (requires one request per commit)
          bytes: true,
 
-         // collect statistics on how many lines of code are in the repo (requires one request per file)
+         // collect statistics on how many lines of code are in the repo (requires one request per commit)
          lines: true,
 
-         // accumulates add/delete/update info for each commit action (requires one request per commit)
-         changes: true
+         // accumulate number of lines added during each commit action (requires one request per commit)
+         adds: true,
+
+         // accumulate number of lines deleted during each commit action (requires one request per commit)
+         deletes: true
       },
 
       // specify periods and number of entries to create

@@ -228,6 +228,34 @@ fxns.readCache = function(path) {
    }
 };
 
+fxns.analyzePatch = function(patch, withBytes) {
+   withBytes === false || (withBytes = true);
+   var out = { lines: { added: 0, deleted: 0 } };
+   withBytes && (out.bytes = { added: 0, deleted: 0 });
+   _.each(patch.split("\n"), function(v) {
+      var m = v.match(/^([+-])(.*)/);
+      switch(m) {
+         case '+':
+            out.lines.added++;
+            withBytes && (out.bytes.added += _bytes(m[2]));
+            break;
+         case '-':
+            out.lines.deleted++;
+            withBytes && (out.bytes.deleted += _bytes(m[2]));
+            break;
+         default:
+            //nothing to do unless it's a change
+      }
+   });
+   return out;
+};
+
+function _bytes(txt) {
+   return Buffer.byteLength(txt, 'utf8')
+}
+
+
+
 function prepArraysForXml(data) {
    if( _.isArray(data) ) {
       var i = data.length;
