@@ -26,7 +26,7 @@ will kick in (it will simply stop when the rate limit is exceeded and pick where
 ## Limitations
 
 Doesn't support OAuth
-
+Does not handle branches (just reads the master)
 
 ## License
 

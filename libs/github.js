@@ -11,20 +11,27 @@ var   Q          = require('q'),
 
 var PER_PAGE = 100;
 
-var gh = new GitHubApi({version: '3.0.0'});
-var auth = null;
+//todo the auth process here is a bit hokey, mostly because node-github's auth process is a bit hokey
+//todo how to improve it?
 
-exports.auth = function(user, pass) {
-   auth = {username: user, password: pass};
-};
+/**
+ * @param {string} user
+ * @param {string} [pass]
+ * @constructor
+ */
+function GitHubWrapper(user, pass) {
+   this.gh = new GitHubApi({version: '3.0.0'});
+   this.user = user;
+   this.auth = auth(this.gh, user, pass);
+}
 
 /**
  * @param {string} user the GitHub user to retrieve orgs for
  * @param {function} iterator called once with each org object, if this function returns {boolean}false, iteration is aborted
  * @return {promise}
  */
-exports.orgs = function(user, iterator) {
-   return acc(iterator, scope, 'getFromUser', {user: user});
+GitHubWrapper.prototype.orgs = function(iterator) {
+   return acc(this.auth, iterator, this.gh.orgs, 'getFromUser', {user: this.user});
 };
 
 /**
@@ -33,25 +40,24 @@ exports.orgs = function(user, iterator) {
  * @param {function} iterator called once with each repo object, if this function returns {boolean}false, iteration is aborted
  * @return {promise}
  */
-exports.repos = function(user, org, iterator) {
+GitHubWrapper.prototype.repos = function(org, iterator) {
    if( typeof(org) === 'function' ) {
       iterator = arguments[1];
-      filter = arguments[2];
       org = null;
    }
-   var options = {user: user};
+   var options = {user: this.user};
    if( org ) { options.org = org; }
    var method = options.org? 'getFromOrg' : 'getFromUser';
-   return acc(iterator, gh.repos, method, options);
+   return acc(this.auth, iterator, this.gh.repos, method, options);
 };
 
-exports.commits = function(owner, repo, iterator) {
+GitHubWrapper.prototype.commits = function(owner, repo, iterator) {
    //todo
    //todo
    //todo
 };
 
-exports.commit = function(owner, repo, sha) {
+GitHubWrapper.prototype.commit = function(owner, repo, sha) {
    //todo
    //todo
    //todo
@@ -64,9 +70,9 @@ exports.commit = function(owner, repo, sha) {
  * @param {object} [filters] may contain any of {moment}since, {function}dirFilter, {function}fileFilter
  * @return {promise}
  */
-exports.files = function(owner, repo, iterator, filters) {
+GitHubWrapper.prototype.files = function(owner, repo, iterator, filters) {
    var opts = {user: owner, repo: repo};
-   return accFiles(iterator, opts, filters);
+   return accFiles(this.auth, iterator, opts, filters);
 };
 
 /**
@@ -75,12 +81,14 @@ exports.files = function(owner, repo, iterator, filters) {
  * @param {string} path relative path from repo root, do not start it with /
  * @return {promise}
  */
-exports.file = function(owner, repo, path) {
+GitHubWrapper.prototype.file = function(owner, repo, path) {
    var opts = {user: owner, repo: repo, path: path};
-   return Q.ninvoke(gh.repos, 'getContent', opts);
+   this.auth();
+   return Q.ninvoke(this.gh.repos, 'getContent', opts);
 };
 
-function accFiles(iterator, props, filters, path, page) {
+function accFiles(auth, iterator, props, filters, path, page) {
+   auth();
    page || (page = 1);
    filters || (filters = {});
    var opts = _.extend({}, props, {per_page: PER_PAGE, page: page}, {path: path || ''});
@@ -95,7 +103,7 @@ function accFiles(iterator, props, filters, path, page) {
          filePath = f.path;
          if( f.type == 'dir' && (!filters.dirFilter || filters.dirFilter(f)) ) {
             console.log('recursing to', filePath, f);
-            promises.push(accFiles(iterator, props, filters, filePath));
+            promises.push(accFiles(auth, iterator, props, filters, filePath));
          }
          else if( f.type == 'file' && (!filters.fileFilter || filters.fileFilter(f)) ) {
 //            var res = iterator(f, props.repo, props.user);
@@ -108,21 +116,26 @@ function accFiles(iterator, props, filters, path, page) {
 
       if( !aborted && len == PER_PAGE ) {
          // get next page
-         promises.push(accFiles(iterator, props, filters, path, page+1));
+         promises.push(accFiles(auth, iterator, props, filters, path, page+1));
       }
 
       return Q.all(promises);
    });
 }
 
-function acc(iterator, obj, method, props, page) {
-   //todo
-   //todo apply authentication
-   //todo
-   //todo
-   //todo
-   //todo
-   //todo
+function auth(gh, user, pass) {
+   if( pass ) {
+      return function() {
+         gh.auth({username: user, password: pass});
+      }
+   }
+   else {
+      return function() {};
+   }
+}
+
+function acc(auth, iterator, obj, method, props, page) {
+   auth();
    page || (page = 1);
    var opts = _.extend({}, props, {per_page: PER_PAGE, page: page});
    return Q.ninvoke(obj, method, opts).then(function(data) {
@@ -130,6 +143,7 @@ function acc(iterator, obj, method, props, page) {
       if( data && data.length ) {
          var i = -1, len = data.length, res, promises = [];
          while(++i < len && !aborted) {
+            // run the iterator with each page, check it for a promise and store it if one is found
             res = iterator(data[i]);
             if( Q.isPromise(res) ) {
                promises.push(res);
@@ -139,8 +153,10 @@ function acc(iterator, obj, method, props, page) {
             }
          }
          return Q.all(promises).then(function() {
+            // conduct pagination but wait for all the iterator promises to resolve first; this is a safety measure
+            // since something in the current page could affect what we do with the remainder of the data
             if( !aborted && len == PER_PAGE ) {
-               return acc(iterator, obj, method, props, page+1);
+               return acc(auth, iterator, obj, method, props, page+1);
             }
             else {
                return aborted;
@@ -150,3 +166,5 @@ function acc(iterator, obj, method, props, page) {
       return aborted;
    });
 }
+
+module.exports = GitHubWrapper;

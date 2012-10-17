@@ -165,7 +165,6 @@ fxns.sendEmail = function(to, message) {
 fxns.cache = function(stats, cacheFileName) {
    if( cacheFileName ) {
       var cache = clearZeroTrends(stats);
-      console.log('caching', util.inspect(cache, false, 10, true));
       FS.writeFile(cacheFileName, JSON.stringify(cache), function (err) {
          if (err) throw err;
          console.log('stats cached in ', cacheFileName);

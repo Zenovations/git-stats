@@ -1,0 +1,2 @@
+
+This is just to test stats when adding/deleting a file.
