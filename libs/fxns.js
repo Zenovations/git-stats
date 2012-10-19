@@ -9,10 +9,15 @@ var _           = require('underscore');
 var base64      = require('./base64.js');
 var util        = require('util');
 var nodemailer  = require("nodemailer");
+var log         = prepLogger();
 
 var VALID_EMAIL = /((([a-z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])+(\.([a-z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])+)*)|((\x22)((((\x20|\x09)*(\x0d\x0a))?(\x20|\x09)+)?(([\x01-\x08\x0b\x0c\x0e-\x1f\x7f]|\x21|[\x23-\x5b]|[\x5d-\x7e]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(\\([\x01-\x09\x0b\x0c\x0d-\x7f]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF]))))*(((\x20|\x09)*(\x0d\x0a))?(\x20|\x09)+)?(\x22)))@((([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.)+(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.?/;
 
 var fxns = exports;
+
+fxns.logger = function() {
+   return log;
+};
 
 /**
  * Examines `to` to decide if it's a file path, email address, or 'stdout'
@@ -28,17 +33,6 @@ fxns.outputType = function(to) {
    }
    else {
       return 'file';
-   }
-};
-
-/**
- * Override console output for simple debugging
- */
-fxns.suppressLogs = function() {
-   var old_log = console.log;
-   console.log = function() {};
-   return function() {
-      console.log = old_log;
    }
 };
 
@@ -81,13 +75,13 @@ fxns.deliver = function(conf, stats) {
                { fileName: 'stats.'+conf.format, contents: stats }
             ]
          });
-         console.log('email delivered', conf.to);
+         log.info('email delivered to %s', conf.to);
          break;
       case 'file':
          fxns.writeFile(conf.to, stats);
          break;
       default:
-         throw new Error('invalid output type', type);
+         throw new Error('invalid output type: ' + type);
    }
 };
 
@@ -107,7 +101,7 @@ fxns.toXml = function(stats, compress) {
  * @return {string}
  */
 fxns.toCsv = function(stats) {
-   var data = _.toArray(stats.repos);
+   var data = _.toArray(stats.repos); //todo shouldn't be relying on a specific data structure
    return json2csv.parse({
       data: data,
       fields: data.length? _.keys(data[0]) : []
@@ -129,9 +123,9 @@ fxns.prepStatsForXml = function(stats) {
  * @param {object} trends
  * @return {object} a modified deep copy of the original
  */
-fxns.prepStatsForXml = function(trends) {
+fxns.prepTrendsForXml = function(trends) {
    var data = JSON.parse(JSON.stringify(trends)); // quick and dirty deep copy
-   return prepArraysForXml(data);
+   return prepArraysForXml(prepReposForXml(data), true);
 };
 
 fxns.sendEmail = function(to, message) {
@@ -144,9 +138,9 @@ fxns.sendEmail = function(to, message) {
    // send mail with defined transport object
    smtpTransport.sendMail(mailOptions, function(error, response){
       if(error){
-         console.log(error);
+         log.error(error);
       }else{
-         console.log("Message sent: " + response.message);
+         log.debug("Message sent: %s", response.message);
       }
 
       //if you don't want to use this transport object anymore, uncomment following line
@@ -164,10 +158,11 @@ fxns.sendEmail = function(to, message) {
  */
 fxns.cache = function(stats, cacheFileName) {
    if( cacheFileName ) {
+      stats = JSON.parse(JSON.stringify(stats)); // make a deep copy
       var cache = clearZeroTrends(stats);
       FS.writeFile(cacheFileName, JSON.stringify(cache), function (err) {
          if (err) throw err;
-         console.log('stats cached in ', cacheFileName);
+         log.debug('stats cached in %s', cacheFileName);
       });
    }
 };
@@ -184,11 +179,12 @@ fxns.removeZeroTrends = function(stats) {
 fxns.writeFile = function(filename, data) {
    FS.writeFile(filename, data, function (err) {
       if (err) throw err;
-      console.log('wrote file ', filename);
+      log.debug('wrote file %s', filename);
    });
 };
 
 fxns.format = function (format, compress, data) {
+   //todo csv won't work with trends
    var out;
    switch(format) {
       case 'json':
@@ -211,10 +207,10 @@ fxns.format = function (format, compress, data) {
 
 fxns.startOf = function(when, units) {
    if( units === 'weeks' ) {
-      return when.subtract('days', when.day()).startOf('day');
+      return when.clone().subtract('days', when.day()).startOf('day');
    }
    else {
-      return when.startOf(inflection.singularize(units));
+      return when.clone().startOf(inflection.singularize(units));
    }
 };
 
@@ -223,7 +219,7 @@ fxns.readCache = function(path) {
       return FS.existsSync(path)? JSON.parse(FS.readFileSync(path)) : null;
    }
    catch(e) {
-      console.error(e);
+      log.warn(e);
       return null;
    }
 };
@@ -249,18 +245,55 @@ fxns.analyzePatch = function(patch) {
    return out;
 };
 
+fxns.intervalKey = function(d, units) {
+   return fxns.startOf(d.clone().utc(), units).format();
+};
+
+fxns.allResolved = function(promises) {
+   var d = Q.defer();
+   var timer = setInterval(function() {
+      var i = promises.length, resolved = true;
+      while(i--) {
+         if( _.isObject(promises[i]) && !promises[i].isResolved() ) {
+            resolved = false;
+            break;
+         }
+      }
+      if( resolved ) {
+         d.resolve();
+         clearInterval(timer);
+      }
+   }, 100);
+   return d.promise;
+};
+
+function _childInterval(units) {
+   switch(units) {
+      case 'years':
+         return 'months';
+      case 'months':
+      case 'weeks':
+         return 'days';
+      case 'days':
+         return null;
+      default:
+         throw new Error('invalid interval', units);
+   }
+}
+
 function _bytes(txt) {
    return Buffer.byteLength(txt, 'utf8')
 }
 
-
-
-function prepArraysForXml(data) {
+function prepArraysForXml(data, trends) {
    if( _.isArray(data) ) {
       var i = data.length;
       while(i--) {
-         if( _.isObject(data[i]) ) {
-            prepArraysForXml(data[i]);
+         if(_.isArray(data[i]) && trends ) {
+            data[i] = prepTrendEntry(data[i]);
+         }
+         else if( _.isObject(data[i]) ) {
+            prepArraysForXml(data[i], trends);
          }
          else if( data[i] === null ) {
             // https://github.com/appsattic/node-data2xml/issues/2
@@ -281,12 +314,16 @@ function prepArraysForXml(data) {
                data[k][ inflection.singularize(k) ] = prepArraysForXml(v);
             }
             else if(_.isObject(data[k]) ) {
-               prepArraysForXml(data[k]);
+               prepArraysForXml(data[k], trends);
             }
          }
       }
    }
    return data;
+}
+
+function prepTrendEntry(vals) {
+   return { _attr: { 'utc': vals[0] }, _value: vals[1] };
 }
 
 function prepReposForXml(stats) {
@@ -314,4 +351,41 @@ function clearZeroTrends(stats) {
       }
    });
    return stats;
+}
+
+function prepLogger() {
+   var opts = require('./logging.config.js');
+   var log = new (require('winston').Logger)(opts);
+
+   // winston doesn't allow more than one argument or provide any formatting strings; fix that here
+   _.each(['error', 'warn', 'info', 'debug'], function(v) {
+      var _super = log[v];
+      log[v] = function() {
+         var args = _.toArray(arguments), s = args[0];
+         if( typeof(s) !== 'string' ) {
+            s = args[0] = util.inspect(v, false, 5, true);
+         }
+         if( s.match(/%[sdj]\b/)) {
+            return _super(util.format.apply(util, args));
+         }
+         else if( args.length > 2 && typeof(args[2]) !== 'function' ) {
+            return _super(_.map(args, function(v) {
+               switch(typeof(v)) {
+                  case 'object':
+                     if( moment.isMoment(v) ) { return v.format(); }
+                     else { return util.inspect(v, false, 5, true); }
+                  default:
+                     return v;
+               }
+            }).join(' '));
+         }
+         else {
+            return _super.apply(log, args);
+         }
+      };
+   });
+
+   return log;
+//   var Log = require('log');
+//   return new Log(conf.logging.level);
 }

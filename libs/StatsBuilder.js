@@ -2,141 +2,138 @@
 var
    Q          = require('q'),
    _          = require('underscore'),
-   base64     = require('./base64.js'),
    GitHubWrap = require('./github.js'),
    fxns       = require('./fxns.js'),
    moment     = require('moment'),
-   util       = require('util'),
-   nodemailer = require("nodemailer");
+   logger     = fxns.logger();
 
 function StatsBuilder(conf) {
-   this.gh = new GitHubWrap(conf.user, conf.pass, _.bind(this.rateLimitExceeded, this));
+   this.gh    = new GitHubWrap(conf.user, conf.pass);
    this.conf  = conf;
    this.since = fxns.oldestInterval(conf.trends.intervals);
-   this.cache = fxns.readCache(conf.cache_file) || { stats: { repos: {} }, trends: { repos: {} } };
-   this.lastUpdate = moment(this.cache.stats.lastUpdate).utc().subtract('years', 100);
-   this.stats = {
-      lastUpdate: this.cache.stats.lastUpdate,
-      orgs: [],
-      repos: {}
-   };
-   this.trends = {};
+   this.cache = fxns.readCache(conf.cache_file) || { lastUpdate: moment.utc().subtract('years', 100).format(), stats: { orgs: [], repos: {} }, trends: { repos: {} } };
    if( conf.trends.active ) {
-      this.trends.total = buildTrends(conf.trends, this.cache.trends.total);
+      this.cache.trends.total = buildTrends(conf.trends, this.cache.trends.total);
       if( conf.trends.repos ) {
-         this.trends.repos = {};
+         this.cache.trends.repos = {};
       }
    }
 
-//   console.log(util.inspect(this.stats, false, 5, true));
-//   console.log(util.inspect(this.trends, false, 5, true));
+//   logger.log(util.inspect(this.cache.stats, false, 5, true));
+//   logger.log(util.inspect(this.cache.trends, false, 5, true));
    var promises = [];
    promises.push( this.gh.repos(_.bind(this.addRepo, this)) );
    promises.push( this.gh.orgs(_.bind(this.addOrg,  this)) );
    this.promise = Q.all(promises)
-      .then(_.bind(function(result) {
-         //debug
-//         fxns.cache({stats: this.stats, trends: this.trends}, conf.cache_file);
+      .then(_.bind(function() {
          return this;
       }, this))
-      .fail(_.bind(function(e, sha) {
-         if( e === 'rate limit exceeded' ) {
-
+      .fail(_.bind(function(e) {
+         if( _.isObject(e) && e.code == 403 && e.message.indexOf('Rate Limit Exceeded') > -1 ) {
+            // if the rate limit is exceeded, we'll get interrupted right in the middle of collecting fun stuff
+            // so what we're going to do here is wait for all the outstanding activities to be resolved, then we're
+            // going to cache whatever we've managed to collect and call it happy
+            logger.warn('Rate Limit Exceeded; results may be incomplete');
+            return this;
          }
+         else {
+            throw e;
+         }
+      }, this))
+      .fin(_.bind(function() {
+         fxns.cache(this.cache, conf.cache_file);
       }, this));
 }
 
 StatsBuilder.prototype.addOrg = function(org) {
-   console.log('ORG', org.login);//debug
-   this.stats.orgs.push({name: org.login, url: org.url});
-   return this.gh.repos(org.login, _.bind(this.addRepo, this));
+   var promises = [];
+   if( !conf.orgFilter || conf.orgFilter(org, this.conf) ) {
+      logger.info('ORG', org.login, org);
+      var orgs = this.cache.stats.orgs, orgEntry = {name: org.login, url: org.url};
+      if(_.indexOf(orgs, orgEntry) < 0 ) {
+         this.cache.stats.orgs.push(orgEntry);
+      }
+//      promises.push( this.gh.repos(org.login, _.bind(this.addRepo, this)) );
+   }
+   return Q.when(promises);
 };
 
 StatsBuilder.prototype.addRepo = function(data) {
-   var conf = this.conf, promises = [], oldStats = {}, when = moment(data.last_updated);
-   if( this.lastUpdate.diff(when) < 0 && (!conf.repoFilter || conf.repoFilter(data)) ) {
+   var conf = this.conf, promises = [];
+   if( !conf.repoFilter || conf.repoFilter(data, this.conf) ) {
+      var repoName = data.full_name, hasUpdates = true;
 
-      var repoName = data.full_name;
       if( conf.trends.active && conf.trends.repos ) {
          // set up the trends entries, we don't use any cached data because the keys change based on when this runs
          // so build the keys from scratch and then apply cache to any matching keys
-         this.trends.repos[repoName] = buildTrends(conf.trends, this.cache.trends.repos[repoName]);
+         this.cache.trends.repos[repoName] = buildTrends(conf.trends, this.cache.trends.repos[repoName]);
       }
 
       if( !this.cache.stats.repos[repoName] ) {
          // the repo doesn't exist in our cache, so we need to load initial stats data
-         console.log('INIT', repoName, data.updated_at);//debug
-         var repo = this.stats.repos[repoName] = {
-            name: data.name,
-            fullName: repoName,
-            size: data.size,
-            created: data.created_at,
-            updated: data.updated_at,
-            description: data.description,
-            homepage: data.homepage,
-            lastCommit: null,
-            url: data.html_url,
-            owner: data.owner.login || data.owner.name,
-            stats: {} // always clear stats (config may change)
-         };
-
-         oldStats = {
-            watchers: data.watchers,
-            issues: data.open_issues,
-            forks: data.forks
-         }
+         var repo = _.extend(mapRepoData(data), {
+            latestRead: null,  // the most recent read, used for determining when we've hit already loaded data
+            lastRead: null,    // when this is not null, we are in the middle of a run (e.g. the last run aborted)
+            stats: {}
+         });
+         logger.info('INIT', repoName, repo.updated);//debug
       }
       else {
-         console.log('UPDATE', repoName, data.updated_at);
-         // if the repo already exists, we just update the cached version with any new commit data
+         // repo already exists
          repo = this.cache.stats.repos[repoName];
-         // cache old stats
-         oldStats = _.extend({}, repo.stats, {
-            watchers: data.watchers,
-            issues: data.open_issues,
-            forks: data.forks
-         });
-         // always clear stats (config may change)
-         repo.stats = {};
+
+         // check to see if the repo was updated or aborted (is there anything to modify?)
+         hasUpdates = repo.lastRead || moment(data.updated_at).diff(moment(repo.updated)) > 0;
+
+         // now update the cached version with any changes to the repo meta data
+         _.extend(repo, mapRepoData(data));
+
+         logger.info(!hasUpdates? 'NOCHANGE' : (repo.lastRead? 'CONTINUE' : 'UPDATE'), repoName, repo.updated);
       }
 
-      //todo
-      //todo
-      //todo
-      //todo
-      //todo
-      //todo
-      //todo store watchers/issues/forks in trends
+      this.cache.stats.repos[repoName] = repo;
 
-      //todo
-      //todo
-      //todo
-      //todo
-      //todo
-      //todo
-      //todo deal with cases where rate limit was exceeded and we need to resume
+      // update repo level stats
+      _.extend(repo.stats, {
+         watchers: data.watchers,
+         issues: data.open_issues,
+         forks: data.forks
+      });
 
+      // build any keys that don't exist yet
       _.each(conf.static, function(v, k) {
-         if( v ) {
-            repo.stats[k] = oldStats[k] || 0;
+         if( v && !_.has(repo.stats, k) ) {
+            repo.stats[k] = 0;
          }
       });
 
+      // accumulate the same stats into trends as appropriate
+      //todo
+      //todo
+      //todo
+
+      if( hasUpdates ) {
 //      var filters = _buildFileFilters(this.lastUpdate, conf);
 //      promises.push( this.gh.files(repo.owner, repo.name, _.bind(this.addFile, this), filters) );
+         promises.push( this.gh.commits(repo.owner, repo.name, _.bind(this.addCommit, this), repo.lastRead) );
+      }
 
-      //todo
-      //todo collect commits
-      //todo
+      Q.all(promises).then(function() {
+         // mark our repo completely updated
+         repo.lastRead = null;
+         // store our new updated stats
+         //todo
+         //todo
+         //todo
+      });
    }
-   else { console.log('skipped', data.full_name); }//debug
    return Q.all(promises);
 };
 
 //var gotOne = 0;
 //StatsBuilder.prototype.addFile = function(file, repo, owner) {
-//   console.log('  F', file.name, repo, owner, file);
-//   var stats = this.stats.repos[_repoName(owner, repo)].stats,
+//   logger.info('  F', file.name, repo, owner, file);
+//   var stats = this.cache.stats.repos[_repoName(owner, repo)].stats,
 //       def = needsFileDetails(this.conf)? this.gh.file(owner, repo, file.path) : null;
 //
 //   //todo
@@ -146,8 +143,34 @@ StatsBuilder.prototype.addRepo = function(data) {
 //   return def? def.promise : null;
 //};
 
-StatsBuilder.prototype.addCommit = function(commit) {
-   console.log('  C', commit.sha);
+StatsBuilder.prototype.addCommit = function(commit, owner, repo) {
+   var repoName = owner+'/'+repo, repo = this.cache.stats.repos[repoName], when = moment(commit.committer.date).utc();
+
+   //todo
+//   if( repo.lastRead != commit.sha || repo.firstCommitRead == commit.sha  ) {
+      //we've found the last point at which commits were read successfully, so we can abort the read
+//      return false;
+//   }
+
+   logger.info('  C', repoName, commit.sha);
+
+   if( this.conf.static.commits ) {
+      repo.stats.commits++;
+   }
+   incrementTrends(this.cache.trends, this.conf.trends, repoName, 'commits', when);
+
+   //todo do these after complete success (if we get a failure reading commit details then revert this)
+
+   // commits are read from the API backwards (most recent first) so we store the "first" successful read during each operation
+   // and stop reading once it is reached during our next iteration
+   if( repo.firstCommitRead === null || moment(repo.firstCommitRead).diff(when) < 0 ) {
+
+   }
+   repo.firstCommitRead === null && (repo.firstCommitRead = commit.sha);
+
+   // each successful read is stored by key so if we abort or fail before completing the repo, we know where to start again
+   repo.lastRead = commit.sha;
+
    //todo
    //todo repo: commits
    //todo trends: commits
@@ -155,8 +178,8 @@ StatsBuilder.prototype.addCommit = function(commit) {
    //todo
 };
 
-StatsBuilder.prototype.applyCommitDetail = function(commit, commitDetail) {
-   console.log('  CC', commitDetail.sha);
+StatsBuilder.prototype.addCommitDetail = function(commit, commitDetail) {
+   logger.info('  CC', commitDetail.sha);
    //todo
    //todo repo: adds/deletes/updates
    //todo trends: adds/deletes/updates
@@ -164,18 +187,49 @@ StatsBuilder.prototype.applyCommitDetail = function(commit, commitDetail) {
 };
 
 StatsBuilder.prototype.getTrends = function(format, compress) {
-   var data = format=='xml'? fxns.prepTrendsForXml(this.trends) : this.trends;
+   var data = format=='xml'? fxns.prepTrendsForXml(this.cache.trends) : this.cache.trends;
+   //todo doesn't work for csv yet :(
    return fxns.format(format, compress, data);
 };
 
 StatsBuilder.prototype.getStats = function(format, compress) {
-   var data = format=='xml'? fxns.prepStatsForXml(this.stats) : this.stats;
+   var data = format=='xml'? fxns.prepStatsForXml(this.cache.stats) : this.cache.stats;
    return fxns.format(format, compress, data);
 };
 
 exports.load = function(conf) {
    return new StatsBuilder(conf).promise;
 };
+
+function averageTrends() {
+   //todo
+   //todo
+   //todo
+   //todo
+}
+
+function incrementTrends(trends, conf, repoName, statKey, when, amt) {
+   amt || (amt = 1);
+   logger.debug('incrementTrends', statKey);
+   if( conf.active && conf.collect.commits ) {
+      _incTrend(conf.intervals, trends.total[statKey], when, amt);
+      if( conf.repos ) {
+         _incTrend(conf.intervals, trends.repos[repoName][statKey], when, amt);
+      }
+   }
+}
+
+function _incTrend(intervals, trend, when, amt) {
+   _.each(intervals, function(v, k) {
+      if( v ) {
+         var key = fxns.intervalKey(when, k);
+         logger.debug('_incTrend', k, key);
+         if( _.has(trend, key) ) {
+            trend[key] += ~~amt;
+         }
+      }
+   });
+}
 
 function buildTrends(conf, cache) {
    cache || (cache = {});
@@ -198,10 +252,10 @@ function _trendIntervals(intervals, cached) {
 function _interval(units, span, cached) {
    var out = [], cache = cacheForTrend(cached, units), i = span;
    while(i--) {
-      var d = fxns.startOf(moment.utc(), units);
+      var d = moment.utc();
       if( i > 0 ) { d.subtract(units, i); }
-      var ds = d.format();
-      out.push([d.format(), cache[ds]? cache[ds] : 0]);
+      var ds = fxns.intervalKey(d, units);
+      out.push([ds, cache[ds] || 0]);
    }
    return out;
 }
@@ -235,4 +289,18 @@ function needsCommitDetails(conf, isUpdate) {
       return v && _.indexOf(list, k) >= 0;
    }
    return _.any(conf.static, _check) || _.any(conf.trends.collect, _check);
+}
+
+function mapRepoData(data) {
+   return {
+      name: data.name,
+      fullName: data.full_name,
+      size: data.size,
+      created: data.created_at,
+      updated: data.updated_at,
+      description: data.description,
+      homepage: data.homepage,
+      url: data.html_url,
+      owner: data.owner.login || data.owner.name
+   };
 }

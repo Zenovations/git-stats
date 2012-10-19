@@ -35,27 +35,33 @@ module.exports = {
       // number of commits submitted to the repo (requires roughly one request per 100 commits)
       commits: true,
 
-      // how many files are in the repo (requires one request per 100 commits)
+      // number of files in the repo (requires one request per 100 commits)
       files: true,
 
-      // total bytes of all files in the repo (requires one request per commit)
+      // total bytes in the repo (requires one request per commit)
       bytes: true,
 
-      // how many lines of code are in the repo (requires one request per commit)
+      // total lines of code in the repo (requires one request per commit)
       lines: true,
 
-      // number of lines added during each commit action (requires one request per commit)
+      // cumulative number of lines added for all commits (requires one request per commit)
       adds: true,
 
-      // number of lines deleted during each commit action (requires one request per commit)
+      // cumulative number of lines deleted for all commits (requires one request per commit)
       deletes: true
    },
 
-   // this is the historical data used for comparisons (make pretty charts!)
-   // the file size and memory usage can be roughly calculated using this pseudo-formula:
-   // bytes = number_of_repos * sum(trends.intervals) * 40 bytes (64bit number + ISO formatted date string + json syntax)
-   // For example, storing trends for 100 GitHub repositories over {years: 10, months: 12, weeks: 25, days: 30}
-   // would be: 708kb or `100 * (10 + 12 + 25 + 30) * 40`
+   // This is the historical data used for comparisons (make pretty charts!)
+   //
+   // The disk and memory usage for one statistic in `collect` can be roughly calculated using this pseudo-formula:
+   // bytes = number_of_repos * sum(trends.intervals) * ~40 bytes (64bit number + ISO formatted date string + json syntax)
+   //
+   // For example, storing `watchers` for 10 GitHub repositories over {years: 10, months: 12, weeks: 25, days: 30}
+   // would be approximately 31K uncompressed: 10 * (10 + 12 + 25 + 30) * 40
+   //
+   // Storing all 9 stats would be around 279K (31K * 9) and storing all 9 stats for 100 repos would cost around 2.7MB.
+   // Compression, naturally, would greatly improve this since the data is nothing but text. XML is quite a bit more
+   // verbose and creates a considerably larger footprint.
    trends: {
 
       // setting this to false will turn off historical data and make people who like analytics very sad
@@ -66,31 +72,31 @@ module.exports = {
       repos: true,
 
       collect: {
-         // number of githubbers watching the repo (requires no additional requests)
+         // average githubbers watching the repo (requires no additional requests)
          watchers: true,
 
-         // number of open issues for the repo (requires no additional requests)
+         // average open issues for the repo (requires no additional requests)
          issues: true,
 
-         // number of repository forks (requires no additional requests)
+         // average repository forks (requires no additional requests)
          forks: true,
 
-         // count the number of commits submitted to the repo (requires roughly one request per 100 commits)
+         // cumulative commits submitted to the repo (requires roughly one request per 100 commits)
          commits: true,
 
-         // count how many files are in the repo (requires one request per commit)
+         // average files in the repo (requires one request per commit)
          files: true,
 
-         // count total bytes of all files in the repo (requires one request per commit)
+         // average bytes in the repo (requires one request per commit)
          bytes: true,
 
-         // collect statistics on how many lines of code are in the repo (requires one request per commit)
+         // average lines of code are in the repo (requires one request per commit)
          lines: true,
 
-         // accumulate number of lines added during each commit action (requires one request per commit)
+         // cumulative lines added for all commits (requires one request per commit)
          adds: true,
 
-         // accumulate number of lines deleted during each commit action (requires one request per commit)
+         // cumulative lines deleted for all commits (requires one request per commit)
          deletes: true
       },
 
@@ -111,35 +117,48 @@ module.exports = {
    // it can be turned off by setting this to a falsy value, but that will greatly increase overhead
    cache_file: '/tmp/github-stats-'+USER+'.cache.json',
 
-   /**
-    * Only repos for which this function returns true are tracked, to disable this filter, set this to false
-    * @param {object} repo the data straight from GitHub's repos API
-    * @return {boolean}
-    */
-   repoFilter: function(repo) {
-      return !repo.fork && !repo.name.match(/^[._~-]/) && !repo.private;
-   },
+   filters: {
 
-   /**
-    * Only directories for which this function returns true are tracked, this affects all statistics related to
-    * files (number of files, bytes, lines of code)
-    *
-    * @param {object} dir the data straight from GitHub's collect API
-    * @return {Boolean}
-    */
-   dirFilter: function(dir) {
-      return !dir.name.match(/^[._]/) && !(dir.name in {lib: 1, ext: 1, node_modules: 1, dist: 1});
-   },
+      /**
+       * Only organizations for which this method returns true are tracked, to disable this filter, set this to false
+       * @param org
+       * @return {Boolean}
+       */
+      org: function(org) {
+         return !org.name.match(/^[._~-]/);
+      },
 
-   /**
-    * Only files for which this function returns true are tracked, this affects all statistics related to
-    * files (number of files, bytes, lines of code)
-    *
-    * @param {object} file data straight from GitHub's collect API
-    * @return {Boolean}
-    */
-   fileFilter: function(file) {
-      return !file.name.match(/^[._]/) && !file.name.match(/[~-]$/);
+      /**
+       * Only repos for which this function returns true are tracked, to disable this filter, set this to false
+       * @param {object} repo the data straight from GitHub's repos API
+       * @return {boolean}
+       */
+      repo: function(repo) {
+         return !repo.fork && !repo.name.match(/^[._~-]/) && !repo.private;
+      },
+
+      /**
+       * Only directories for which this function returns true are tracked, this affects all statistics related to
+       * files (number of files, bytes, lines of code)
+       *
+       * @param {object} dir the data straight from GitHub's collect API
+       * @return {Boolean}
+       */
+      dir: function(dir) {
+         return !dir.name.match(/^[._]/) && !(dir.name in {lib: 1, ext: 1, node_modules: 1, dist: 1});
+      },
+
+      /**
+       * Only files for which this function returns true are tracked, this affects all statistics related to
+       * files (number of files, bytes, lines of code)
+       *
+       * @param {object} file data straight from GitHub's collect API
+       * @return {Boolean}
+       */
+      file: function(file) {
+         return !file.name.match(/^[._]/) && !file.name.match(/[~-]$/);
+      }
+
    },
 
    // true to send email on any error (be sure to configure settings below)
@@ -173,10 +192,7 @@ module.exports = {
    },
 
    // setting this to false will add formatting (returns, indentation) to the outputted data for human readability
-   compress: true,
-
-   // setting this to true generates lots of logging to stdout
-   debug: false
+   compress: true
 
 };
 
