@@ -64,15 +64,12 @@ GitHubWrapper.prototype.commits = function(owner, repo, iterator, sha) {
  * @param {string} owner
  * @param {string} repo
  * @param {string} sha
- * @param {function} iterator
  * @return {promise}
  */
-GitHubWrapper.prototype.commit = function(owner, repo, sha, iterator) {
+GitHubWrapper.prototype.commit = function(owner, repo, sha) {
    this.auth();
    var options = {user: owner, repo: repo, sha: sha};
-   return Q.ninvoke(this.gh.repos, 'getCommit', options).then(function(data) {
-      return iterator(data);
-   });
+   return Q.ninvoke(this.gh.repos, 'getCommit', options);
 };
 
 function auth(gh, user, pass) {
@@ -91,42 +88,42 @@ function acc(auth, iterator, obj, method, props, page) {
    page || (page = 1);
    var opts = _.extend({}, props, {per_page: PER_PAGE, page: page});
    return Q.ninvoke(obj, method, opts).then(function(data) {
-      var status = 'success', meta = (data && data.meta) || {};
+      var def = Q.resolve('success');
       if( data && data.length ) {
-         var i = -1, len = data.length, res, promises = [];
-         while(++i < len && status === 'success') {
-            // run the iterator with each page, check it for a promise and store it if one is found
-            res = iterator(data[i], opts.user, opts.repo);
-            if( Q.isPromise(res) ) {
-               promises.push(res);
-            }
-            else if( res === false ) {
-               status = 'stopped';
+         // just a quick and dirty scoping function to store each iteration of data array for future invocation
+         function fx(rec, user, repo) {
+            return function(prevResult) {
+               if( prevResult === false ) {
+                  // if the previous iterator returned false, then we're done invoking results
+                  return false;
+               }
+               else {
+                  // iterator may return a promise which becomes the new deferred
+                  return iterator(rec, user, repo);
+               }
             }
          }
-         return Q.all(promises).then(function() {
-            // conduct pagination but wait for all the iterator promises to resolve first; this is a safety measure
-            // since something in the current page could affect what we do with the remainder of the data
-            if( status === 'success' && len == PER_PAGE ) {
+
+         var i = -1, len = data.length, res, promises = [];
+         while(++i < len) {
+            // make sure they run sequentially so the iterator can do its job correctly and get sequential data
+            def = def.then(fx(data[i], opts.user, opts.repo));
+         }
+         return def.then(function(prevResult) {
+            // conduct pagination but wait for all the last iterator to resolve first; this is a safety measure
+            // to make sure that iterated results stay sequential and because something in the current page could
+            // affect whether the iterator wants to continue (and it could abort after we've already started to
+            // retrieve the next page)
+            if( prevResult !== false && len == PER_PAGE ) {
                return acc(auth, iterator, obj, method, props, page+1);
             }
             else {
-               return status;
+               return true;
             }
          });
       }
-      return status;
+      return def;
    });
 }
-
-var RateLimitError = function (msg, repo, sha) {
-   Error.captureStackTrace(this, RateLimitError);
-   this.message = msg || 'Error';
-   this.repo = repo;
-   this.sha = sha;
-};
-util.inherits(RateLimitError, Error);
-RateLimitError.prototype.name = 'RateLimitError';
-GitHubWrapper.RateLimitError = RateLimitError;
 
 module.exports = GitHubWrapper;

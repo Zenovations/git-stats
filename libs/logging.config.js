@@ -1,4 +1,6 @@
 
+//todo move logging config somewhere more configurable
+
 //var opts = { transports: [] };
 //conf.logging.stdout && opts.transports.push( new winston.transports.Console({colorize: true, prettyPrint: true, levels: levels}) );
 //conf.logging.file && opts.transports.push( new winston.transports.File({ filename: conf.logging.file, timestamp: true, json: true, levels: levels }) );
@@ -16,7 +18,7 @@ function levels(level) {
    // if you set an output level, winston only shows that level and not
    // all the ones higher in the list, so correct this as a convenience
    //noinspection FallthroughInSwitchStatementJS
-   switch(conf.level) {
+   switch(level) {
       case 'debug':
          levels.push('debug');
       case 'info':
@@ -26,7 +28,7 @@ function levels(level) {
       case 'error':
          levels.push('error');
       default:
-      // leave it alone
+         // nothing to do here
    }
    return levels;
 }

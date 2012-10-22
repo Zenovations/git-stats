@@ -15,7 +15,8 @@ var VALID_EMAIL = /((([a-z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF90
 
 var fxns = exports;
 
-fxns.logger = function() {
+fxns.logger = function(conf) {
+   if( conf || !log ) { log = prepLogger(conf); }
    return log;
 };
 
@@ -114,7 +115,7 @@ fxns.toCsv = function(stats) {
  * @return {object} a modified deep copy of the original
  */
 fxns.prepStatsForXml = function(stats) {
-   var statsCopy = JSON.parse(JSON.stringify(stats)); // quick and dirty deep copy
+   var statsCopy = _deepCopy(stats); // quick and dirty deep copy
    return prepArraysForXml(prepReposForXml(statsCopy));
 };
 
@@ -124,7 +125,7 @@ fxns.prepStatsForXml = function(stats) {
  * @return {object} a modified deep copy of the original
  */
 fxns.prepTrendsForXml = function(trends) {
-   var data = JSON.parse(JSON.stringify(trends)); // quick and dirty deep copy
+   var data = _deepCopy(trends); // quick and dirty deep copy
    return prepArraysForXml(prepReposForXml(data), true);
 };
 
@@ -267,6 +268,12 @@ fxns.allResolved = function(promises) {
    return d.promise;
 };
 
+fxns.deepCopy = _deepCopy;
+
+function _deepCopy(obj) {
+   return JSON.parse(JSON.stringify(obj));
+}
+
 function _childInterval(units) {
    switch(units) {
       case 'years':
@@ -353,8 +360,8 @@ function clearZeroTrends(stats) {
    return stats;
 }
 
-function prepLogger() {
-   var opts = require('./logging.config.js');
+function prepLogger(conf) {
+   var opts = conf || require('./logging.config.js');
    var log = new (require('winston').Logger)(opts);
 
    // winston doesn't allow more than one argument or provide any formatting strings; fix that here
@@ -363,7 +370,7 @@ function prepLogger() {
       log[v] = function() {
          var args = _.toArray(arguments), s = args[0];
          if( typeof(s) !== 'string' ) {
-            s = args[0] = util.inspect(v, false, 5, true);
+            s = args[0] = util.inspect(s, false, 5, true);
          }
          if( s.match(/%[sdj]\b/)) {
             return _super(util.format.apply(util, args));
