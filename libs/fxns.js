@@ -226,7 +226,7 @@ fxns.readCache = function(path) {
 };
 
 fxns.analyzePatch = function(patch) {
-   var out = { added: 0, deleted: 0 };
+   var out = { added: 0, deleted: 0, diff: 0 };
    _.each(patch.split("\n"), function(v) {
       var m = v.match(/^([+-])(.*)/);
       if( m ) {

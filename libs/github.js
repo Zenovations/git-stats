@@ -99,7 +99,7 @@ function acc(auth, iterator, obj, method, props, page) {
                }
                else {
                   // iterator may return a promise which becomes the new deferred
-                  return iterator(rec, user, repo);
+                  return iterator(rec, user, repo, data.meta);
                }
             }
          }
