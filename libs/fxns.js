@@ -10,6 +10,7 @@ var base64      = require('./base64.js');
 var util        = require('util');
 var nodemailer  = require("nodemailer");
 var log         = prepLogger();
+var undef;
 
 var VALID_EMAIL = /((([a-z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])+(\.([a-z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])+)*)|((\x22)((((\x20|\x09)*(\x0d\x0a))?(\x20|\x09)+)?(([\x01-\x08\x0b\x0c\x0e-\x1f\x7f]|\x21|[\x23-\x5b]|[\x5d-\x7e]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(\\([\x01-\x09\x0b\x0c\x0d-\x7f]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF]))))*(((\x20|\x09)*(\x0d\x0a))?(\x20|\x09)+)?(\x22)))@((([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.)+(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.?/;
 
@@ -129,7 +130,7 @@ fxns.prepTrendsForXml = function(trends) {
    return prepArraysForXml(prepReposForXml(data), true);
 };
 
-fxns.sendEmail = function(to, message) {
+fxns.sendEmail = function(to, message, conf) {
    var p = conf.email.protocol;
    var smtpTransport = nodemailer.createTransport(p, conf.email[p]);
 
@@ -149,24 +150,6 @@ fxns.sendEmail = function(to, message) {
    });
 };
 
-
-/**
- * This is async! that's not an issue here, but could be if something depended on the cache
- * being written first before getting used.
- *
- * @param {object} stats
- * @param {string} cacheFileName
- */
-fxns.cache = function(stats, cacheFileName) {
-   if( cacheFileName ) {
-      stats = JSON.parse(JSON.stringify(stats)); // make a deep copy
-      var cache = clearZeroTrends(stats);
-      FS.writeFile(cacheFileName, JSON.stringify(cache), function (err) {
-         if (err) throw err;
-         log.debug('stats cached in %s', cacheFileName);
-      });
-   }
-};
 
 /**
  * Removes trends which have a zero value for brevity
@@ -198,7 +181,7 @@ fxns.format = function (format, compress, data) {
          out = fxns.toCsv(data);
          break;
       case 'raw':
-         out = JSON.parse(JSON.stringify(data));
+         out = _deepCopy(data);
          break;
       default:
          throw new Error('invalid output format: '+format);
@@ -215,9 +198,64 @@ fxns.startOf = function(when, units) {
    }
 };
 
-fxns.readCache = function(path) {
+/**
+ * Store the cache file and a serialized version of the config so we can tell later if it changed.
+ *
+ * This is async! If something depended on the cache being written before getting used, this must be updated
+ * to return a promise.
+ *
+ * @param {object} stats
+ * @param {object} conf
+ */
+fxns.cache = function(stats, conf) {
+   var cacheFileName = conf.cache_file;
+   if( cacheFileName ) {
+      stats = JSON.parse(JSON.stringify(stats)); // make a deep copy
+      var cache = clearZeroTrends(stats);
+      cache.lastConfig = _copyConfForCache(conf);
+      FS.writeFile(cacheFileName, JSON.stringify(cache), function (err) {
+         if (err) throw err;
+         log.info('CACHE written to %s', cacheFileName);
+      });
+   }
+};
+
+fxns.cacheDefaults = {
+   lastUpdate: moment.utc().subtract('years', 100).format(),
+   stats: {
+      orgs: [],
+      total: {},
+      repos: {}
+   },
+   trends: {
+      total: {},
+      repos: {},
+      latest: {}
+   }
+};
+
+fxns.readCache = function(conf) {
    try {
-      return FS.existsSync(path)? JSON.parse(FS.readFileSync(path)) : null;
+      //todo use a reviver function to make moments out of iso date strings
+      var path = conf.cache_file, cache = FS.existsSync(path)? JSON.parse(FS.readFileSync(path)) : null;
+      if( cache && _statsFieldsUpdatedInConf(cache.lastConfig, conf) ) {
+         log.warn('configuration changed, deleting cache and starting from scratch');
+         fxns.cache(fxns.cacheDefaults, conf);
+         return fxns.cacheDefaults;
+      }
+      else {
+         return cache;
+      }
+   }
+   catch(e) {
+      log.warn(e);
+      return fxns.cacheDefaults;
+   }
+};
+
+fxns.lastUpdated = function(path) {
+   try {
+      return moment(FS.statSync(path).mtime).utc();
    }
    catch(e) {
       log.warn(e);
@@ -227,7 +265,7 @@ fxns.readCache = function(path) {
 
 fxns.analyzePatch = function(patch) {
    var out = { added: 0, deleted: 0, diff: 0 };
-   _.each(patch.split("\n"), function(v) {
+   _.each((patch||'').split("\n"), function(v) { // patch can sometimes be missing for zero length files :(
       var m = v.match(/^([+-])(.*)/);
       if( m ) {
          switch(m[1]) {
@@ -247,7 +285,7 @@ fxns.analyzePatch = function(patch) {
 };
 
 fxns.intervalKey = function(d, units) {
-   return fxns.startOf(d.clone().utc(), units).format();
+   return fxns.startOf(d, units).format();
 };
 
 fxns.allResolved = function(promises) {
@@ -269,6 +307,10 @@ fxns.allResolved = function(promises) {
 };
 
 fxns.deepCopy = _deepCopy;
+
+fxns.activeKeys = function(hash) {
+   return _.compact(_.map(hash, function(v,k) { return v? k : null; }));
+};
 
 function _deepCopy(obj) {
    return JSON.parse(JSON.stringify(obj));
@@ -350,7 +392,7 @@ function clearZeroTrends(stats) {
    _.each(stats, function(v, k) {
       if( _.isArray(v) && k in {'years': 1, 'months': 1, 'weeks': 1, 'days': 1} ) {
          stats[k] = _.filter(v, function(v) {
-            return _.last(v) > 0;
+            return v[1] !== 0 && (v.length < 3 || v[2] !== 0);
          });
       }
       else if(_.isObject(v) ) {
@@ -370,7 +412,7 @@ function prepLogger(conf) {
       log[v] = function() {
          var args = _.toArray(arguments), s = args[0];
          if( typeof(s) !== 'string' ) {
-            s = args[0] = util.inspect(s, false, 5, true);
+            s = args[0] = util.inspect(s, false, 10, true);
          }
          if( s.match(/%[sdj]\b/)) {
             return _super(util.format.apply(util, args));
@@ -380,7 +422,7 @@ function prepLogger(conf) {
                switch(typeof(v)) {
                   case 'object':
                      if( moment.isMoment(v) ) { return v.format(); }
-                     else { return util.inspect(v, false, 5, true); }
+                     else { return util.inspect(v, false, 10, true); }
                   default:
                      return v;
                }
@@ -395,4 +437,22 @@ function prepLogger(conf) {
    return log;
 //   var Log = require('log');
 //   return new Log(conf.logging.level);
+}
+
+function _statsFieldsUpdatedInConf(partialConfFromCache, currConf) {
+   return !_.isEqual(partialConfFromCache, _copyConfForCache(currConf));
+}
+
+function _copyConfForCache(conf) {
+   var copy = _deepCopy(_.pick(conf, 'user', 'static', 'trends', 'cacheFile', 'filters'));
+   copy.filters = _serializeFunctions(conf.filters);
+   return copy;
+}
+
+function _serializeFunctions(obj) {
+   var out = {};
+   _.each(obj, function(v, k) {
+      out[k] = v.toString();
+   });
+   return out;
 }

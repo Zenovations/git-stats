@@ -6,38 +6,35 @@ var
    GitHubWrap = require('./github.js'),
    moment     = require('moment'),
    logger     = fxns.logger(),
-   REQUIRES_DETAIL = ['lines', 'bytes', 'adds', 'deletes'];
+   util       = require('util'),
+   REQUIRES_DETAIL = ['files', 'lines', 'bytes', 'adds', 'deletes'],
+   undef;
 
+/**
+ * @param {object} conf
+ * @constructor
+ */
 function StatsBuilder(conf) {
    this.gh    = new GitHubWrap(conf.user, conf.pass);
    this.conf  = conf;
    this.since = fxns.oldestInterval(conf.trends.intervals);
-   this.cache = fxns.readCache(conf.cache_file) || { lastUpdate: moment.utc().subtract('years', 100).format(), stats: { orgs: [], total: {}, repos: {} }, trends: { total: {}, repos: {}, latest: {} } };
-   if( conf.trends.active ) {
-      this.cache.trends.total = buildTrends(conf.trends, this.cache.trends.total);
-      if( conf.trends.repos ) {
-         this.cache.trends.repos = {};
-      }
-   }
+   this.cache = fxns.readCache(conf);
+   initStatSet(this.cache.stats.total, conf.static);
+   _initTrends(this.cache.trends, conf);
 
    // temporary state info used internally to connect the methods together without too much coupling
    this.tmp = {
       firstCommits: {}
    };
 
-//   logger.log(util.inspect(this.cache.stats, false, 5, true));
-//   logger.log(util.inspect(this.cache.trends, false, 5, true));
+//   logger.log(util.debug(this.cache.stats, false, 5, true));
+//   logger.log(util.debug(this.cache.trends, false, 5, true));
    var promises = [];
    promises.push( this.gh.repos(_.bind(this.addRepo, this)) );
    promises.push( this.gh.orgs(_.bind(this.addOrg,  this)) );
    this.promise = Q.all(promises)
       .then(_.bind(function() {
-         //todo build stats.totals from all repos
-         //todo
-         //todo
-         //todo
-
-         //todo build trends.totals from all repos
+         //todo build averages
          //todo
          //todo
          //todo
@@ -56,13 +53,14 @@ function StatsBuilder(conf) {
          }
       }, this))
       .fin(_.bind(function() {
-         fxns.cache(this.cache, conf.cache_file);
+         conf.trends.active && conf.trends.averages && calculateAverages(this.cache, this.conf.trends);
+         //fxns.cache(this.cache, conf); //todo
       }, this));
 }
 
 StatsBuilder.prototype.addOrg = function(org) {
    var promises = [];
-   if( !this.conf.orgFilter || this.conf.orgFilter(org, this.conf) ) {
+   if( !this.conf.filters.org || this.conf.filters.org(org, this.conf) ) {
       logger.info('ORG', org.login);
       var orgs = this.cache.stats.orgs, orgEntry = {name: org.login, url: org.url};
       if(_.indexOf(orgs, orgEntry) < 0 ) {
@@ -75,7 +73,7 @@ StatsBuilder.prototype.addOrg = function(org) {
 
 StatsBuilder.prototype.addRepo = function(data) {
    var conf = this.conf, def = Q.resolve(null);
-   if( !conf.repoFilter || conf.repoFilter(data) ) {
+   if( !conf.filters.repo || conf.filters.repo(data) ) {
       var repoName = data.full_name, hasUpdates = true, status = 'NOCHANGE';
 
       var cache = this.cache;
@@ -113,6 +111,8 @@ StatsBuilder.prototype.addRepo = function(data) {
 
       cache.stats.repos[repoName] = repo;
 
+      initStatSet(repo.stats, conf.static);
+
       // update repo level stats
       _.extend(repo.stats, {
          watchers: data.watchers,
@@ -120,16 +120,9 @@ StatsBuilder.prototype.addRepo = function(data) {
          forks: data.forks
       });
 
-      // build any keys that don't exist yet
-      _.each(conf.static, function(v, k) {
-         if( v && !_.has(repo.stats, k) ) {
-            repo.stats[k] = 0;
-         }
-      });
-
       // accumulate the same stats into trends as appropriate
-      _.each(['watchers', 'issues', 'forks'], function(statName) {
-         incrementTrends(cache.trends, conf.trends, repoName, statName);
+      _.each(['watchers', 'issues', 'forks'], function(statKey) {
+         incrementTrend(cache.trends, conf.trends, repoName, statKey, moment.utc(), repo.stats[statKey]);
       });
 
       if( hasUpdates ) {
@@ -141,7 +134,7 @@ StatsBuilder.prototype.addRepo = function(data) {
          def = Q.resolve();
       }
 
-      def = def.then(function() {
+      def = def.then(_.bind(function() {
          // mark our repo completely updated
          repo.lastRead = null;
 
@@ -151,7 +144,7 @@ StatsBuilder.prototype.addRepo = function(data) {
          repo.latestRead = this.tmp.firstCommits[repoName] || repo.latestRead;
 
          return repo;
-      });
+      }, this));
    }
    return def;
 };
@@ -175,7 +168,6 @@ StatsBuilder.prototype.addCommit = function(commit, owner, repoName) {
    }
 
    if( needsCommitDetails(this.conf) ) {
-      logger.debug('fetching commit details', fullRepoName, commit.sha);
       // if we need additional details for stats, fetch them before resolving
       this.gh.commit(owner, repoName, commit.sha)
          .then(function(detail) {
@@ -198,8 +190,8 @@ StatsBuilder.prototype.addCommit = function(commit, owner, repoName) {
             commitDetail = commit[1];
             commit = commit[0];
          }
-         logger.info('  '+(commitDetail? 'CC' : 'C'), fullRepoName, commit.sha);
-         addCommitStats(this.conf, this.cache, commit, commitDetail);
+         logger.info('  '+(commitDetail? 'CC' : 'C'), fullRepoName, commit.sha, commit.commit.committer.date);
+         addCommitStats(this.conf, this.cache, fullRepoName, commit, commitDetail);
 
          // each successful read is stored by key so if we abort or fail before completing the repo, we know where to start again
          repo.lastRead = commit.sha;
@@ -224,16 +216,23 @@ exports.load = function(conf) {
    return new StatsBuilder(conf).promise;
 };
 
-function _isActiveKey(v) {
-   return !!v;
-}
-
-function _parseStats(commit, commitDetail, hasBytes) {
+function _parseCommitChanges(commit, commitDetail, hasBytes) {
    var stats = { files: 0, bytes: 0, lines: 0, adds: 0, deletes: 0, commits: 1 };
    if( commitDetail ) {
       var f, files = commitDetail.files, i = ~~(files && files.length);
       while(i--) {
          f = files[i];
+
+         //todo filter files and dirs
+         //todo
+         //todo
+         //todo
+         //todo
+         //todo
+         //todo
+         //todo
+         //todo
+
          if( hasBytes ) {
             stats.bytes += fxns.analyzePatch(f.patch).diff;
          }
@@ -257,71 +256,112 @@ function _parseStats(commit, commitDetail, hasBytes) {
                logger.error('I do not recognize this commit status', f.status, f.filename);
          }
       }
-      logger.debug('parseFileStats', commitDetail.sha, stats);
    }
    return stats;
 }
 
 function addCommitStats(conf, cache, fullRepoName, commit, commitDetail) {
-   var trendsActive = cache.trends.active,
-       statKeys =  _.union(_.filter(conf.static, _isActiveKey), trendsActive? _.filter(conf.trends.collect, _isActiveKey) : []),
-       stats = _parseStats(commit, commitDetail, conf.static.bytes || conf.trends.collect.bytes),
-       repo = cache.stats.repos[fullRepoName],
-       trends = trendsActive && cache.trends.total,
-       rtrend = trendsActive && cache.trends.repos[fullRepoName],
-       when = moment(commit.committer.date).utc();
+   var trendsActive = conf.trends.active,
+       statKeys =  _.union(fxns.activeKeys(conf.static), trendsActive? fxns.activeKeys(conf.trends.collect) : []),
+       changes = _parseCommitChanges(commit, commitDetail, conf.static.bytes || conf.trends.collect.bytes),
+       when = moment(commit.commit.committer.date).utc();
 
-   // update the static commits property
-   if( conf.static.commits ) {
-      repo.stats.commits += stats.commits;
-   }
-   incrementTrends(cache.trends, this.conf.trends, fullRepoName, 'commits', when, stats.commits);
+   logger.debug('changes', commit.sha, when.format(), util.inspect(changes));
 
    // merge the static and trends stats which are active and iterate them
-   statKeys.forEach(function(statName) {
-      //todo
-      //todo
-      //todo
-      //todo
-      //todo
-      //todo
+   statKeys.forEach(function(statKey) {
+      switch(statKey) {
+         case 'watchers':
+         case 'issues':
+         case 'forks':
+            break; // these are not part of the commit stats
+         default:
+            incrementStat(cache.stats, conf.static, fullRepoName, statKey, changes[statKey]);
+            trendsActive && incrementTrend(cache.trends, conf.trends, fullRepoName, statKey, when, changes[statKey]);
+      }
    });
 }
 
-function averageTrends(trends, trendConf, repoName, statKey, when, amt) {
-   //todo
-   //todo
-   //todo
-   //todo
-}
-
-function incrementTrends(trends, trendConf, repoName, statKey, when, amt) {
-   amt || (amt = 1);
-   when || (when = moment.utc());
-   logger.debug('incrementTrends', statKey, trendConf.collect[statKey]);
-   if( trendConf.active && trendConf.collect[statKey] ) {
-      //todo handle averages
-      //todo
-      //todo
-      //todo
-      //todo
-      _incTrend(trendConf.intervals, trends.total[statKey], when, amt);
-      if( trendConf.repos ) {
-         _incTrend(trendConf.intervals, trends.repos[repoName][statKey], when, amt);
-      }
+function incrementStat(stats, statsToCollect, fullRepoName, statKey, amt) {
+   if( statsToCollect[statKey] ) {
+      var repo = stats.repos[fullRepoName];
+//      logger.debug('incrementStat', statKey, amt, stats.total[statKey], repo.stats[statKey]);
+      stats.total[statKey] += amt;
+      repo.stats[statKey] += amt;
    }
 }
 
-function _incTrend(intervals, trend, when, amt) {
-   _.each(intervals, function(v, k) {
-      if( v ) {
-         var key = fxns.intervalKey(when, k);
-         if( _.has(trend, key) ) {
-            logger.debug('_incTrend', k, key, trend[key]);
-            trend[key] += ~~amt;
+function calculateAverages(cache, trendConf) {
+   //todo
+   //todo
+   //todo
+   //todo
+   //todo
+   //todo
+}
+
+function incrementTrend(trends, trendConf, repoName, statKey, when, amt) {
+   if( trendConf.active && trendConf.collect[statKey] ) {
+      var total = trends.total[statKey];
+      var repo = (trendConf.repos && trends.repos[repoName][statKey]) || {};
+      _.each(trendConf.intervals, function(v, interval) {
+         if( v ) {
+            var dateKey = fxns.intervalKey(when, interval), t = _findTrendStat(total[interval], dateKey), r = _findTrendStat(repo[interval], dateKey);
+            t && (t[1] += amt);
+            r && (r[1] += amt);
+//            logger.debug('incrementTrend', [statKey, interval, dateKey].join('->'), amt, t && t[1], r && r[1]);
          }
-      }
-   });
+      });
+      trendConf.averages && _averageSourceData(trends.latest, trendConf.intervals, when, amt);
+   }
+}
+
+function _findTrendStat(list, key) {
+   return list? _.find(list, function(v) {
+      return v && v[0] === key;
+   }) : null;
+}
+
+
+function _averageSourceData(latest, intervals, when, amt) {
+   var now = moment();
+   if( intervals.months > 0 || intervals.weeks > 0 ) {
+      _latest(latest, when, 'days', amt)
+   }
+
+   if( intervals.years > 0 ) {
+      _latest(latest, when, 'months', amt);
+   }
+}
+
+function _latest(latest, when, units, amt) {
+   var start = fxns.startOf(when, units), working = latest[units];
+   if( start.utc().format() !== working.period ) {
+      //todo "close" the working.period and start a new one
+      //todo
+      //todo
+      //todo
+      //todo
+      //todo
+
+      //todo store the averages for the old period (they are now final)
+      //todo
+      //todo
+      //todo
+      //todo
+      //todo
+   }
+
+   working.count++;
+   working.total += amt;
+   working.avg = Math.round(working.total / working.count);
+
+   //todo store the averages ?
+   //todo
+   //todo
+   //todo
+   //todo
+   //todo
 }
 
 function buildTrends(conf, cache) {
@@ -345,24 +385,24 @@ function _trendIntervals(intervals, cached) {
 function _interval(units, span, cached) {
    var out = [], cache = cacheForTrend(cached, units), i = span;
    while(i--) {
-      var d = moment.utc();
+      var d = moment.utc(), res;
       if( i > 0 ) { d.subtract(units, i); }
       var ds = fxns.intervalKey(d, units);
-      out.push([ds, cache[ds] || 0]);
+      res = [ds, cache[1] || 0];
+      out.push(res);
    }
    return out;
 }
 
 function cacheForTrend(trendSet, units) {
-   var t = trendSet && trendSet[units];
-   return t? _.object(t) : {};
+   return trendSet && trendSet[units]? trendSet[units] : [];
 }
 
 function _buildFileFilters(lastUpdate, conf) {
    var out = { since: lastUpdate };
-   _.each(['fileFilter', 'dirFilter'], function(v) {
-      if( conf[v] ) {
-         out[v] = conf[v];
+   _.each(['file', 'dir'], function(v) {
+      if( conf.filters[v] ) {
+         out[v] = conf.filters[v];
       }
    });
    return out;
@@ -395,4 +435,20 @@ function mapRepoData(data) {
 
 function logXLimit(meta) {
    meta && logger.debug('x-ratelimit-remaining', meta['x-ratelimit-remaining']);
+}
+
+function initStatSet(stats, statHash, val) {
+   val || (val = 0);
+   _.each(fxns.activeKeys(statHash), function(key) {
+      stats[key] || (stats[key] = 0);
+   });
+}
+
+function _initTrends(trends, conf) {
+   if( conf.trends.active ) {
+      trends.total = buildTrends(conf.trends, trends.total);
+      if( conf.trends.repos ) {
+         trends.repos = {};
+      }
+   }
 }

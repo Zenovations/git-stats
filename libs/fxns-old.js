@@ -72,8 +72,8 @@ module.exports = function(conf, github) {
    };
 
    fxns.processRepos = function(stats, repoList) {
-      if( conf.repoFilter ) {
-         repoList = _.filter(repoList, conf.repoFilter);
+      if( conf.filters.repo ) {
+         repoList = _.filter(repoList, conf.filters.repo);
       }
       var promises = [], i = repoList.length, last = moment.utc(cache.lastUpdated), name;
       while(i--) {
@@ -248,10 +248,10 @@ module.exports = function(conf, github) {
                while(++i < len) {
                   f = files[i];
                   filePath = f.path;
-                  if( f.type == 'dir' && (!conf.dirFilter || conf.dirFilter(f)) ) {
+                  if( f.type == 'dir' && (!conf.filters.dir || conf.filters.dir(f)) ) {
                      promises.push(dirStats(stats, filePath));
                   }
-                  else if( f.type == 'file' && (!conf.fileFilter || conf.fileFilter(f)) ) {
+                  else if( f.type == 'file' && (!conf.filters.file || conf.filters.file(f)) ) {
                      promises.push(fileStats(stats, filePath));
                   }
                }

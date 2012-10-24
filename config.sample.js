@@ -35,33 +35,28 @@ module.exports = {
       // number of commits submitted to the repo (requires roughly one request per 100 commits)
       commits: true,
 
-      // number of files in the repo (requires one request per 100 commits)
+      // number of files in the repo (requires two requests per commit)
       files: true,
 
-      // total bytes in the repo (requires one request per commit)
+      // total bytes in the repo (requires two requests per commit)
       bytes: true,
 
-      // total lines of code in the repo (requires one request per commit)
+      // total lines of code in the repo (requires two requests per commit)
       lines: true,
 
-      // cumulative number of lines added for all commits (requires one request per commit)
+      // cumulative number of lines added for all commits (requires two requests per commit)
       adds: true,
 
-      // cumulative number of lines deleted for all commits (requires one request per commit)
+      // cumulative number of lines deleted for all commits (requires two requests per commit)
       deletes: true
    },
 
-   // This is the historical data used for comparisons (make pretty charts!)
+   // This is the delta (change over time) used for comparisons (make pretty charts!). It can also include averages
+   // for each interval recorded.
    //
-   // The disk and memory usage for one statistic in `collect` can be roughly calculated using this pseudo-formula:
-   // bytes = number_of_repos * sum(trends.intervals) * ~40 bytes (64bit number + ISO formatted date string + json syntax)
-   //
-   // For example, storing `watchers` for 10 GitHub repositories over {years: 10, months: 12, weeks: 25, days: 30}
-   // would be approximately 31K uncompressed: 10 * (10 + 12 + 25 + 30) * 40
-   //
-   // Storing all 9 stats would be around 279K (31K * 9) and storing all 9 stats for 100 repos would cost around 2.7MB.
-   // Compression, naturally, would greatly improve this since the data is nothing but text. XML is quite a bit more
-   // verbose and creates a considerably larger footprint.
+   // The calculations are done at the same time as the static and averages, so there is only a small overhead
+   // to calculate the additional figures, however, this greatly increases the storage size and memory usage
+   // (although they should still be practical for most reasonable cases--see the README for estimations)
    trends: {
 
       // setting this to false will turn off historical data and make people who like analytics very sad
@@ -72,31 +67,31 @@ module.exports = {
       repos: true,
 
       collect: {
-         // average githubbers watching the repo (requires no additional requests)
+         // delta of githubbers watching the repo (requires no additional requests)
          watchers: true,
 
-         // average open issues for the repo (requires no additional requests)
+         // delta of open issues for the repo (requires no additional requests)
          issues: true,
 
-         // average repository forks (requires no additional requests)
+         // delta of repository forks (requires no additional requests)
          forks: true,
 
-         // cumulative commits submitted to the repo (requires roughly one request per 100 commits)
+         // delta of commits submitted to the repo (requires roughly one request per 100 commits)
          commits: true,
 
-         // average files in the repo (requires one request per commit)
+         // delta of files in the repo (requires two requests per commit)
          files: true,
 
-         // average bytes in the repo (requires one request per commit)
+         // delta bytes in the repo (requires two requests per commit)
          bytes: true,
 
-         // average lines of code are in the repo (requires one request per commit)
+         // delta lines of code in the repo (requires two requests per commit)
          lines: true,
 
-         // cumulative lines added for all commits (requires one request per commit)
+         // cumulative number of lines added for all commits (requires two requests per commit)
          adds: true,
 
-         // cumulative lines deleted for all commits (requires one request per commit)
+         // cumulative number of lines deleted for all commits (requires two requests per commit)
          deletes: true
       },
 
@@ -110,7 +105,11 @@ module.exports = {
          months: 12,
          weeks: 25,
          days: 30
-      }
+      },
+
+      // if true, averages are also stored for each stat in `collect`, in addition to the changes
+      // over each time period, see README for details on the cost of this (it's very low)
+      averages: true
    },
 
    // this caches all stats so that only repos/files modified since we last collected stats are read
@@ -125,7 +124,7 @@ module.exports = {
        * @return {Boolean}
        */
       org: function(org) {
-         return !org.name.match(/^[._~-]/);
+         return org.login && !org.login.match(/^[._~-]/);
       },
 
       /**
