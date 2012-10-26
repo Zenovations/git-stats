@@ -51,12 +51,17 @@ GitHubWrapper.prototype.repos = function(org, iterator) {
  * @param {string} owner
  * @param {string} repo
  * @param {function} iterator
- * @param {string} [sha]
+ * @param {string} [lastReadSha]
  * @return {promise}
  */
-GitHubWrapper.prototype.commits = function(owner, repo, iterator, sha) {
+GitHubWrapper.prototype.commits = function(owner, repo, iterator, lastReadSha, includeDetails) {
    var options = {user: owner, repo: repo};
-   if( sha ) { options.sha = sha }
+   if( lastReadSha ) {
+      options.sha = lastReadSha
+   }
+   if( includeDetails ) {
+      iterator = _wrapIteratorWithDetails(this, iterator);
+   }
    return acc(this.auth, iterator, this.gh.repos, 'getCommits', options);
 };
 
@@ -124,6 +129,14 @@ function acc(auth, iterator, obj, method, props, page) {
       }
       return def;
    });
+}
+
+function _wrapIteratorWithDetails(gh, iterator) {
+   return function(rec, user, repo, meta) {
+      return gh.commit(user, repo, rec.sha).then(function(details) {
+         return iterator(details, user, repo, details.meta);
+      })
+   }
 }
 
 module.exports = GitHubWrapper;

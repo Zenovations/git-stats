@@ -6,7 +6,12 @@ var
    GitHubWrap = require('./github'),
    Repo       = require('./Repo'),
    Trend      = require('./Trend'),
-   logger     = fxns.logger();
+   logger     = fxns.logger(),
+   REQUIRES_DETAIL = ['files', 'lines', 'bytes', 'adds', 'deletes'];
+
+exports.load = function(conf) {
+   return new StatsBuilder(conf).promise;
+};
 
 /**
  * @param {object} conf
@@ -19,11 +24,11 @@ function StatsBuilder(conf) {
    this.cache = fxns.readCache(conf);
 
    // look over the cached data and verify the integrity
-   fxns.initStatSet(this.cache.total.stats, conf.static);
+   this.cache.total.stats = fxns.initStatSet(conf.static, this.cache.total.stats);
 
    // build trend to total repos
    if( conf.trends.active ) {
-      this.cache.total.trends = new Trend(conf.trends.collect, conf.trends.intervals, this.cache.total.trends);
+      this.cache.total.trends = new Trend(fxns.activeKeys(conf.trends.collect), conf.trends.intervals, this.cache.total.trends);
    }
 
    // temporary state info used internally to connect the methods together without too much coupling
@@ -41,18 +46,19 @@ function StatsBuilder(conf) {
       .then(_.bind(function() {
          // we only do this if no errors occurred and all data was processed; in the case that some data was skipped,
          // or an error occurred, we could be missing a valid repo and accidentally destroy the data
-         _.without(_.keys(this.cache.repos), this.tmp.reposFound).forEach(_.bind(function(k) {
-            console.debug('deleted old repo', k);
+         logger.debug('reposFound', this.tmp.reposFound);
+         _.difference(_.keys(this.cache.repos), this.tmp.reposFound).forEach(_.bind(function(k) { //todo-abstract
+            logger.debug('deleted old repo', k);
             delete this.cache.repos[k];
          }, this));
          return this;
       }, this))
       .fail(_.bind(function(e) {
-         if( _.isObject(e) && e.code == 403 && e.message.indexOf('Rate Limit Exceeded') > -1 ) {
+         if( isRateError(e) ) { //todo-abstract
             // if the rate limit is exceeded, we'll get interrupted right in the middle of collecting fun stuff
             // so what we're going to do here is wait for all the outstanding activities to be resolved, then we're
             // going to cache whatever we've managed to collect and call it happy
-            logger.warn('Rate Limit Exceeded; results may be incomplete');
+            logger.warn('Rate Limit Exceeded; results may be incomplete', e.toString());
             return this;
          }
          else {
@@ -61,8 +67,8 @@ function StatsBuilder(conf) {
       }, this))
       .fin(_.bind(function() {
          // calculate total stats
-         _.each(this.repos, _.bind(function(v) {
-            _addStats(this.cache.total.stats, v.stats);
+         _.each(this.cache.repos, _.bind(function(v) { //todo-abstract
+            fxns.addStats(this.cache.total.stats, v.stats);
          }, this));
 
          //todo
@@ -71,6 +77,20 @@ function StatsBuilder(conf) {
          //fxns.cache(this.cache, conf); //todo
       }, this));
 }
+
+StatsBuilder.prototype.raw = function() {
+   return this.format('raw', true);
+};
+
+StatsBuilder.prototype.format = function(format, compress) {
+   var data = _.pick(this.cache, this.conf.trends.active? ['total', 'orgs', 'repos'] : ['total', 'orgs']);
+   format == 'xml' && (data = fxns.prepStatsForXml(data));
+   //todo csv is busted :(
+   //todo
+   //todo
+   //todo
+   return fxns.format(format, compress, data);
+};
 
 StatsBuilder.prototype.addOrg = function(org) {
    var promises = [];
@@ -89,38 +109,51 @@ StatsBuilder.prototype.addRepo = function(data) {
    var conf = this.conf, def = Q.resolve(null);
    if( !conf.filters.repo || conf.filters.repo(data) ) {
       var fullRepoName = data.full_name, cache = this.cache;
-      this.reposFound.push(fullRepoName); // used to delete cached repos that don't exist anymore
+      this.tmp.reposFound.push(fullRepoName); // used to delete cached repos that don't exist anymore
 
-      def = Repo.load(this.gh, data, conf, cache).then(function(repo) {
-         // only store if it succeeds completely
-         cache.stats.repos[fullRepoName] = repo;
+      var repo = new Repo(data, conf, this.cache.total, cache.repos[fullRepoName]);
+      logger.info(repo.status, repo.name);
 
-         return repo;
-      });
+      if( repo.status !== 'NOCHANGE' ) {
+         def = this.gh.commits(repo.owner, repo.short, _.bind(repo.addCommit, repo), repo.lastRead, needsCommitDetails(this.conf));
+      }
+      else {
+         def = Q.resolve();
+      }
+
+      return def
+         .then(_.bind(function() {
+            logger.debug('completed', repo.name);
+
+            // mark our repo completely updated
+            repo.lastRead = null;
+
+            // store the latest read so that on future updates we only have to read commits which we haven't read before
+            // in the case that a commit fails, we don't update this; the next time this repo is updated we will start
+            // reading from repo.lastRead and continue to the same target we aimed for last time (the prior repo.latestRead)
+            repo.latestRead = repo.firstCommit || repo.latestRead;
+
+            // stored if operation succeeds completely
+            cache.repos[fullRepoName] = repo;
+
+            return repo.status;
+         }, this))
+         .fail(function(e) {
+            if( isRateError(e) ) {
+               // also stored if it's just a rate error
+               cache.repos[fullRepoName] = repo;
+            }
+            throw e;
+         });
    }
    return def;
 };
 
-StatsBuilder.prototype.raw = function() {
-   return this.format('raw', true);
-};
+function needsCommitDetails(conf) {
+   var staticKeys = fxns.activeKeys(conf.static), trendKeys = conf.trends.active? fxns.activeKeys(conf.trends.collect) : [];
+   return _.intersection(_.union(staticKeys, trendKeys), REQUIRES_DETAIL).length > 0;
+}
 
-StatsBuilder.prototype.format = function(format, compress) {
-   var data = _.pick(this.cache, this.conf.trends.active? ['stats', 'trends'] : ['stats']);
-   format == 'xml' && (data = fxns.prepStatsForXml(data));
-   //todo csv is busted :(
-   //todo
-   //todo
-   //todo
-   return fxns.format(format, compress, data);
-};
-
-exports.load = function(conf) {
-   return new StatsBuilder(conf).promise;
-};
-
-function _addStats(target, source) {
-   _.each(_.keys(target), function(key) {
-      target[key] += source[key];
-   });
+function isRateError(e) {
+   return _.isObject(e) && e.code == 403 && e.message.indexOf('Rate Limit Exceeded') > -1;
 }

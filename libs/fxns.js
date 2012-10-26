@@ -33,8 +33,11 @@ fxns.outputType = function(to) {
    else if( VALID_EMAIL.test(to) ) {
       return 'email';
    }
-   else {
+   else if( FS.existsSync(to) ) {
       return 'file';
+   }
+   else {
+      return 'unknown';
    }
 };
 
@@ -172,7 +175,7 @@ fxns.format = function (format, compress, data) {
    var out;
    switch(format) {
       case 'json':
-         out = compress? JSON.stringify(data) : JSON.stringify(data, null, 2);
+         out = fxns.toJson(data, compress);
          break;
       case 'xml':
          out = fxns.toXml(data, compress);
@@ -210,7 +213,7 @@ fxns.startOf = function(when, units) {
 fxns.cache = function(stats, conf) {
    var cacheFileName = conf.cache_file;
    if( cacheFileName ) {
-      stats = JSON.parse(JSON.stringify(stats)); // make a deep copy
+      stats = _deepCopy(stats); // make a deep copy
       var cache = clearZeroTrends(stats);
       cache.lastConfig = _copyConfForCache(conf);
       FS.writeFile(cacheFileName, JSON.stringify(cache), function (err) {
@@ -221,8 +224,9 @@ fxns.cache = function(stats, conf) {
 };
 
 fxns.cacheDefaults = {
-   lastUpdate: moment.utc().subtract('years', 100).format(),
-   totals: {
+   lastUpdate: moment.utc().subtract('years', 100),
+   orgs: [],
+   total: {
       stats: [],
       trends: {}
    },
@@ -232,7 +236,7 @@ fxns.cacheDefaults = {
 fxns.readCache = function(conf) {
    try {
       //todo use a reviver function to make moments out of iso date strings
-      var path = conf.cache_file, cache = FS.existsSync(path)? JSON.parse(FS.readFileSync(path)) : null;
+      var path = conf.cache_file, cache = FS.existsSync(path)? fxns.fromJson(FS.readFileSync(path)) : null;
       if( cache && _statsFieldsUpdatedInConf(cache.lastConfig, conf) ) {
          log.warn('configuration changed, deleting cache and starting from scratch');
          fxns.cache(fxns.cacheDefaults, conf);
@@ -280,7 +284,7 @@ fxns.analyzePatch = function(patch) {
 };
 
 fxns.intervalKey = function(d, units) {
-   return fxns.startOf(d, units).format();
+   return fxns.startOf(d, units).utc().format();
 };
 
 fxns.allResolved = function(promises) {
@@ -307,30 +311,33 @@ fxns.activeKeys = function(hash) {
    return _.compact(_.map(hash, function(v,k) { return v? k : null; }));
 };
 
-fxns.initStatSet = function(stats, statHash) {
-   var activeKeys = fxns.activeKeys(statHash);
+fxns.initStatSet = function(statHash, cache) {
+   var out = {};
+   cache || (cache = {});
    // add any keys that aren't in the cached data
-   _.each(activeKeys, function(key) {
-      stats[key] || (stats[key] = 0);
+   _.each(fxns.activeKeys(statHash), function(key) {
+      out[key] = ~~cache[key];
+   });
+   return out;
+};
+
+fxns.addStats = function(target, source) {
+   _.each(_.intersection(_.keys(target), _.keys(source)), function(key) {
+      target[key] += source[key];
    });
 };
 
-function _deepCopy(obj) {
-   return JSON.parse(JSON.stringify(obj));
-}
+fxns.toJson = function(o, compress) {
+   return JSON.stringify(o, dateStringer, compress === false? 2 : undef);
+};
 
-function _childInterval(units) {
-   switch(units) {
-      case 'years':
-         return 'months';
-      case 'months':
-      case 'weeks':
-         return 'days';
-      case 'days':
-         return null;
-      default:
-         throw new Error('invalid interval', units);
-   }
+fxns.fromJson = function(s) {
+   return JSON.parse(s, dateReviver);
+};
+
+function _deepCopy(obj) {
+   // convert data to a string and then back to an object, effectively erasing any references
+   return fxns.fromJson(fxns.toJson(obj));
 }
 
 function _bytes(txt) {
@@ -392,10 +399,12 @@ function prepReposForXml(stats) {
 }
 
 function clearZeroTrends(stats) {
-   _.each(stats, function(v, k) {
-      if( _.isArray(v) && k in {'years': 1, 'months': 1, 'weeks': 1, 'days': 1} ) {
-         stats[k] = _.filter(v, function(v) {
-            return v[1] !== 0 && (v.length < 3 || v[2] !== 0);
+   _.each(stats, function(v, parentKey) {
+      if( _.isObject(v) && parentKey in {'years': 1, 'months': 1, 'weeks': 1, 'days': 1} ) {
+         _.each(stats[parentKey], function(v, childKey) {
+            if( v && v._c === 0 ) {
+               delete stats[parentKey][childKey];
+            }
          });
       }
       else if(_.isObject(v) ) {
@@ -458,4 +467,21 @@ function _serializeFunctions(obj) {
       out[k] = v.toString();
    });
    return out;
+}
+
+function dateStringer(key, value) {
+   if( value && typeof(value) === 'object' && moment.isMoment(value) ) {
+      return value.utc().format();
+   }
+   return value;
+}
+
+function dateReviver(key, value) {
+   if (typeof value === 'string') {
+      var a = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2}(?:\.\d*)?)Z?$/.exec(value);
+      if (a) {
+         return moment(a).utc();
+      }
+   }
+   return value;
 }

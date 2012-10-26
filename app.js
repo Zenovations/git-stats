@@ -1,25 +1,39 @@
 
-var Q          = require('q'),
-    _          = require('underscore'),
-    conf       = require('./config.js'),
+var conf       = require('./config.js'),
     fxns       = require('./libs/fxns.js'),
     sb         = require('./libs/StatsBuilder.js'),
     util       = require('util'),
-    fs         = require('fs'),
     logger     = fxns.logger();
 
 sb.load(conf)
       .then(function(stats) {
-//         logger.info(fxns.removeZeroTrends({stats: JSON.parse(stats.getStats(conf.format, conf.compress)), trends: JSON.parse(stats.getTrends(conf.format, conf.compress))}));
-//         logger.info(stats.cache);
-//         logger.info({stats: JSON.parse(stats.getStats(conf.format, conf.compress)), trends: JSON.parse(stats.getTrends(conf.format, conf.compress))});
-         logger.info('total', _.pick(stats.raw(conf.format, conf.compress).trends.total, 'watchers', 'forks', 'issues'));
-         logger.info('repo', _.pick(stats.raw(conf.format, conf.compress).trends.repos['katowulf/git-stats'], 'watchers', 'forks', 'issues'));
+         var data = stats.format(conf.format, conf.compress);
+         if( conf.strip_zero_trends ) {
+            fxns.removeZeroTrends(data);
+         }
+         switch(fxns.outputType(conf.to)) {
+            case 'stdout':
+               // don't use logger here; it must get printed
+               console.log(data && typeof(data) === 'object'? util.inspect(data, false, 10, true) : data);
+               break;
+            case 'email':
+               fxns.sendEmail(conf.to, {
+                  message: '[git-stats] stats for '+conf.user,
+                  attachments: [
+                     { fileName: 'git-stats-'+conf.user+'.'+conf.format, contents: data }
+                  ]
+               }, conf);
+               break;
+            case 'file':
+               fxns.writeFile(conf.to, data);
+               break;
+            default:
+               console.error('Invalid output destination (not stdout, an email address, or a file path)', conf.to);
+         }
       })
       .fail(function(e) {
-         //todo deliver email on failure
-
-         logger.error(e);
-         logger.error(e.stack);
-         throw e;
+         if( conf.send_errors_to ) {
+            fxns.sendEmail(conf.send_errors_to, e.stack || e, conf);
+         }
+         logger.error(e.stack || e);
       });

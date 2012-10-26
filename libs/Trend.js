@@ -4,10 +4,10 @@ var fxns   = require('./fxns.js'),
     moment = require('moment'),
     log    = fxns.logger();
 
-function Trend(stats, intervals, cache) {
+function Trend(statKeys, intervals, cache) {
    cache || (cache = {});
    this.data = {};
-   this.stats = fxns.activeKeys(stats);
+   this.stats = statKeys;
    _.each(this.stats, _.bind(function(key) {
       this.data[key] = new Stat(key, intervals, cache[key]);
    }, this));
@@ -15,8 +15,9 @@ function Trend(stats, intervals, cache) {
 module.exports = Trend;
 
 Trend.prototype.acc = function(when, changes) {
-   _.each(_.union(_.keys(changes), this.stats), _.bind(function(key) {
-      this.data[key].acc(when, changes[key]);
+   _.each(_.intersection(_.keys(changes), this.stats), _.bind(function(key) {
+//      console.log('acc', key, ~~changes[key]);
+      this.data[key].acc(when, ~~changes[key]);
    }, this));
 };
 
@@ -32,8 +33,7 @@ function Stat(key, intervals, cache) {
 
 Stat.prototype.acc = function(when, amt) {
    _.each(this.intervals, _.bind(function(unit) {
-      var ds = fxns.intervalKey(when, unit);
-      this.intervals[ds] && _inc(this.intervals[ds], amt);
+      _inc(this.data[unit], fxns.intervalKey(when, unit), amt);
    }, this))
 };
 
@@ -41,10 +41,14 @@ Stat.prototype.toJSON = function() {
    return this.data;
 };
 
-function _inc(ds, amt) {
-   ds._c++;
-   ds.net += amt;
-   ds.avg = Math.round(ds.net / ds._c);
+function _inc(interval, dateKey, amt) {
+//   console.log('_inc', interval, dateKey, amt, interval[dateKey]);//debug
+   if( interval && interval[dateKey] ) {
+      var stat = interval[dateKey];
+      stat._c++;
+      stat.net += amt;
+      stat.avg = Math.round(stat.net / stat._c);
+   }
 }
 
 

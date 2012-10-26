@@ -7,147 +7,122 @@ var
    Trend      = require('./Trend.js'),
    logger     = fxns.logger(),
    util       = require('util'),
-   REQUIRES_DETAIL = ['files', 'lines', 'bytes', 'adds', 'deletes'],
+   STATIC_STATS = ['watchers', 'forks', 'issues'],
    undef;
 
-function Repo(gh, data, conf, total, cache) {
+module.exports = Repo;
+
+function Repo(data, conf, total, cache) {
    cache || (cache = {});
    this.name  = data.full_name;
+   this.owner = data.owner.login;
+   this.short = data.name;
    this.meta  = mapRepoData(data);
    this.total = total;
-   this.conf  = conf;
+   this.trendsActive = conf.trends.active;
+   this.repoTrendsActive = conf.trends.active && conf.trends.repos;
+   this.collectBytes = conf.static.bytes || (conf.trends.active && conf.trends.collect.bytes);
+   this.staticKeys = fxns.activeKeys(conf.static);
+   this.trendKeys = this.repoTrendsActive? fxns.activeKeys(conf.trends.collect) : [];
+   this.filters = _fileRelatedFilters(conf);
 
+   // coupled witch StatsBuilder.addRepo and used below in addCommit (see notes there)
    this.firstCommit = null;
-   this.stats = _.extend({}, cache.stats);
-   fxns.initStatSet(this.stats, conf.static);
 
-   // update repo level stats
+   // the static numbers for this repo
+   this.stats = fxns.initStatSet(conf.static, cache.stats);
+
+   // update repo level stats directly; they are not cumulative
    _.extend(this.stats, {
-      watchers: data.watchers,
-      issues: data.open_issues,
-      forks: data.forks
+      watchers: ~~data.watchers,
+      issues: ~~data.open_issues,
+      forks: ~~data.forks
    });
 
-   this.status = _status(this.meta, cache);      //todo
-   this.updateStart = _start(this.meta, conf); //todo
+   this.status = _status(this.meta, cache);
 
-   this.trends = {};
-   if( conf.trends.active && conf.trends.repos ) {
-      this.trends = new Trend(conf.trends.collect, conf.trends.intervals, this.trends);
+   if( this.repoTrendsActive ) {
+      this.trends = new Trend(this.trendKeys, conf.trends.intervals, cache.trends);
    }
 
    if( this.status !== 'NOCHANGE' ) {
-      // accumulate the same stats into trends as appropriate
-      this.acc(this.meta.updated, this.stats);
+      // accumulate the new stats into trends as appropriate
+      this.acc(this.meta.updated, _.pick(this.stats, STATIC_STATS));
    }
 }
 
-Repo.load = function(gh, data, conf, cache) {
-   //todo this is the wrong cache to pass in here; need to pass cache.stats.repos[fullRepoName]
-   var fullRepoName = data.full_name, repoCache = cache.stats.repos[fullRepoName], def;
-   var repo = new Repo(gh, data, conf, repoCache);
-
-   if( repo.status !== 'NOCHANGE' ) {
-      //todo make this repo.update?
-      def = gh.commits(repo.owner, repo.name, _.bind(repo.addCommit, repo), repo.lastRead);
-   }
-   else {
-      def = Q.resolve();
-   }
-
-   return def.then(_.bind(function() {
-      // mark our repo completely updated
-      repo.lastRead = null;
-
-      // store the latest read so that on future updates we only have to read commits which we haven't read before
-      // in the case that a commit fails, we don't update this; the next time this repo is updated we will start
-      // reading from repo.lastRead and continue to the same target we aimed for last time (the prior repo.latestRead)
-      repo.latestRead = repo.firstCommit || repo.latestRead;
-
-      return repo;
-   }, this));
-};
-
 Repo.prototype.acc = function(when, changes) {
-   var conf = this.conf;
+   if( this.trendsActive ) {
+      this.total.trends.acc(when, changes);
 
-   if( conf.trends.active ) {
-      this.total.trends.acc(this.meta.updated, this.stats);
-
-      if( conf.trends.active && conf.trends.repos ) {
+      if( this.repoTrendsActive ) {
          // set up the trends entries, we don't just build off cached data because the keys change
          // so build the keys from scratch and then apply cache to any matching keys
-         this.trends.acc(this.meta.updated, this.stats);
+         this.trends.acc(when, changes);
       }
    }
 };
 
+/**
+ * Reads commit data and accumulates the stats for each read. Will ensure that no commit is read twice (based
+ * on the last commit read and the assumption that newer commits always appear first) and will gracefully handle
+ * cases where the last attempt aborted and only some commits were added (using repo.lastRead and repo.latestRead)
+ *
+ * @param {object} commit the output of gh.commit (libs/gihtub.js)
+ * @return {Boolean} false to cancel iterations of commits or true to continue
+ */
 Repo.prototype.addCommit = function(commit) {
-   var fullRepoName = this.name,
-      repo = this,
-      def = Q.defer();
-
    logXLimit(arguments[3]);
 
-   if( repo.latestRead == commit.sha  ) {
-      //we've found the last point at which commits were read successfully, so we can stop reading commits
-      logger.debug('latestRead reached on repo', repoName, commit.sha);
+   // see if we need to read this commit
+   if( this.lastRead === commit.sha ) {
+      // we are continuing a read that was aborted previously
+      // however, the lastRead is actually returned in the data if it is specified,
+      // so intercept and don't read it twice but do continue iterations
+      return true;
+   }
+   else if( this.latestRead === commit.sha  ) {
+      // we've found the start of the last successful run, so we can stop reading commits here
+      logger.debug('latestRead reached, not reading anymore commits', this.name, commit.sha);
       return false;
    }
    else if( !this.firstCommit ) {
-      // store the first commit read for each repo; however, we don't add it to the repo until
-      // all commits read successfully, otherwise, if we need to resume a failed read, we'll be in trouble
+      // store the first commit read; later we will decide if it goes into the cached data (only if all reads succeed)
+      // unfortunately, this is currently coupled with StatsBuilder.addRepo, which uses this variable directly
       this.firstCommit = commit.sha;
    }
 
-   if( needsCommitDetails(this.conf) ) {
-      // if we need additional details for stats, fetch them before resolving
-      this.gh.commit(owner, repoName, commit.sha)
-         .then(function(detail) {
-            def.resolve([commit, detail]);
-         }, def.reject);
+   // parse the commit/commitDetail objects and obtain all stats for them
+   var changes  = _parseCommitChanges(commit, this.collectBytes, this.filters);
+
+   var when = moment(commit.commit.committer.date).utc();
+   logger.info('  C', this.name, commit.sha, when.format());
+   logger.debug(JSON.stringify(changes));
+
+   // accumulate trends
+   if( this.trendsActive ) {
+      this.total.trends.acc(when, changes);
+      this.repoTrendsActive && this.trends.acc(when, changes);
    }
-   else {
-      // if there are no details to fetch, resolve instantly
-      def.resolve([commit]);
-   }
+   // accumulate statistics
+   addCommitStats(this.staticKeys, this, changes);
 
-   // A commit is all or nothing.
-   //
-   // We wait for full resolution before adding this commit to the stats. In this way if
-   // the operation fails, we have not added partial stats that will corrupt the results
-   return def.promise.then(
-      _.bind(function(commitData) {
-         // Q doesn't allow two arguments in resolve(...) so we have to pass an array here
-         var commit = commitData[0];
-         var when = moment(commit.commit.committer.date);
+   // each successful read is stored by key so if we abort or fail before completing the repo, we know where to start again
+   this.lastRead = commit.sha;
 
-         // parse the commit/commitDetail objects and obtain all stats for them
-         var changes  = _parseCommitChanges(commit, commitData[1], this.conf.static.bytes || this.conf.trends.collect.bytes);
-
-         logger.info('  C', fullRepoName, commit.sha, when.format(), util.inspect(changes));
-
-         // accumulate trends
-         if( this.conf.trends.active ) {
-            this.cache.trends.total.acc(when, changes); //todo
-            this.conf.trends.repos && this.cache.trends.repos[fullRepoName].acc(when, changes); //todo
-         }
-         // accumulate statistics
-         addCommitStats(this.conf, this.cache, fullRepoName, changes); //todo
-
-         // each successful read is stored by key so if we abort or fail before completing the repo, we know where to start again
-         repo.lastRead = commit.sha;
-
-         return commit;
-      }, this)
-   );
+   return true;
 };
 
+/**
+ * Modifies output when JSON.stringify is used on this object
+ * @return {object}
+ */
 Repo.prototype.toJSON = function() {
    return _.extend(
       { lastRead: this.lastRead, latestRead: this.latestRead },
       this.meta, //todo need to format the moments!
-      {stats: this.stats}
+      {stats: this.stats},
+      this.repoTrendsActive? {trends: this.trends} : {}
    )
 };
 
@@ -166,25 +141,21 @@ function mapRepoData(data) {
 }
 
 function logXLimit(meta) {
-   meta && logger.debug('x-ratelimit-remaining', meta['x-ratelimit-remaining']);
+   var k = 'x-ratelimit-remaining', qty = meta[k], m = qty && qty < 10? 'warn' : 'debug';
+   meta && logger[m](k, qty);
 }
 
-function _parseCommitChanges(commit, commitDetail, hasBytes) {
+function _parseCommitChanges(commit, hasBytes, filters) {
    var stats = { files: 0, bytes: 0, lines: 0, adds: 0, deletes: 0, commits: 1 };
-   if( commitDetail ) {
-      var f, files = commitDetail.files, i = ~~(files && files.length);
+   if( commit.files ) {
+      var f, files = commit.files, i = ~~(files && files.length);
       while(i--) {
          f = files[i];
 
-         //todo filter files and dirs
-         //todo
-         //todo
-         //todo
-         //todo
-         //todo
-         //todo
-         //todo
-         //todo
+         console.log('file', f);//debug
+//         if( !_passesFilters(f.path, filters) ) {
+//            continue;
+//         }
 
          if( hasBytes ) {
             stats.bytes += fxns.analyzePatch(f.patch).diff;
@@ -213,26 +184,12 @@ function _parseCommitChanges(commit, commitDetail, hasBytes) {
    return stats;
 }
 
-function addCommitStats(conf, cache, fullRepoName, changes) {
-   var statKeys =  _.without(conf.static, ['watchers', 'issues', 'forks']); // watchers/issues/forks are not in commit data
-
+function addCommitStats(staticKeys, repo, changes) {
    // merge the static and trends stats which are active and iterate them
-   statKeys.forEach(function(statKey) {
-//      logger.debug('incrementStat', statKey, amt, stats.total[statKey], repo.stats[statKey]);
-      cache.stats.total[statKey] += changes[statKey];
-      cache.stats.repos[fullRepoName].stats[statKey] += changes[statKey];
+   _.intersection(staticKeys, _.keys(changes)).forEach(function(statKey) {
+      //repo.total.stats[statKey] += changes[statKey]; // done after completion of all repos now (in StatsBuilder)
+      repo.stats[statKey] += changes[statKey];
    });
-}
-
-function _repoName(owner, repo) {
-   return owner+'/'+repo;
-}
-
-function needsCommitDetails(conf) {
-   function _check(v, k) {
-      return v && _.indexOf(REQUIRES_DETAIL, k) >= 0;
-   }
-   return _.any(conf.static, _check) || _.any(conf.trends.collect, _check);
 }
 
 function _status(meta, cache) {
@@ -242,7 +199,7 @@ function _status(meta, cache) {
    else if( !cache.updated ) {
       return 'INIT';
    }
-   else if( meta.updated.diff(moment(cache.updated)) < 0 ) {
+   else if( meta.updated.diff(cache.updated) < 0 ) {
       return 'UPDATE';
    }
    else {
@@ -250,12 +207,11 @@ function _status(meta, cache) {
    }
 }
 
-module.exports = Repo;
+function _fileRelatedFilters(conf) {
+   _.pick(conf.filters, 'file', 'dir');
+}
 
-function _start(meta, conf) {
-   //todo
-   //todo
-   //todo
-   //todo
-   //todo
+function _passesFilters(file, filters) {
+   if( filters.file && !filters.file() )
+   return true;
 }
