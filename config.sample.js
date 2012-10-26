@@ -51,8 +51,9 @@ module.exports = {
       deletes: true
    },
 
-   // This is the delta (change over time) used for comparisons (make pretty charts!). It can also include averages
-   // for each interval recorded.
+   // Calculates the `net` (the delta or sum) and `avg` (average for the period) for each `interval` (time period),
+   // useful for comparisons (make pretty charts!). Note that the `net` doesn't make sense for repo level datum
+   // (e.g. watchers, forks, issues), but it is part of the necessary cache data for compiling these averages.
    //
    // The calculations are done at the same time as the static and averages, so there is only a small overhead
    // to calculate the additional figures, however, this greatly increases the storage size and memory usage
@@ -105,11 +106,7 @@ module.exports = {
          months: 12,
          weeks: 25,
          days: 30
-      },
-
-      // if true, averages are also stored for each stat in `collect`, in addition to the changes
-      // over each time period, see README for details on the cost of this (it's very low)
-      averages: true
+      }
    },
 
    // this caches all stats so that only repos/files modified since we last collected stats are read
@@ -144,7 +141,7 @@ module.exports = {
        * @return {Boolean}
        */
       dir: function(dir) {
-         return !dir.name.match(/^[._]/) && !(dir.name in {lib: 1, ext: 1, node_modules: 1, dist: 1});
+         return !dir.name.match(/^[._]/) && !(dir.name in {ext: 1, node_modules: 1, dist: 1});
       },
 
       /**

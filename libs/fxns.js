@@ -222,16 +222,11 @@ fxns.cache = function(stats, conf) {
 
 fxns.cacheDefaults = {
    lastUpdate: moment.utc().subtract('years', 100).format(),
-   stats: {
-      orgs: [],
-      total: {},
-      repos: {}
+   totals: {
+      stats: [],
+      trends: {}
    },
-   trends: {
-      total: {},
-      repos: {},
-      latest: {}
-   }
+   repos: {}
 };
 
 fxns.readCache = function(conf) {
@@ -244,7 +239,7 @@ fxns.readCache = function(conf) {
          return fxns.cacheDefaults;
       }
       else {
-         return cache;
+         return _.extend(fxns.cacheDefaults, cache);
       }
    }
    catch(e) {
@@ -310,6 +305,14 @@ fxns.deepCopy = _deepCopy;
 
 fxns.activeKeys = function(hash) {
    return _.compact(_.map(hash, function(v,k) { return v? k : null; }));
+};
+
+fxns.initStatSet = function(stats, statHash) {
+   var activeKeys = fxns.activeKeys(statHash);
+   // add any keys that aren't in the cached data
+   _.each(activeKeys, function(key) {
+      stats[key] || (stats[key] = 0);
+   });
 };
 
 function _deepCopy(obj) {
