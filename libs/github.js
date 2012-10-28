@@ -57,6 +57,7 @@ GitHubWrapper.prototype.repos = function(org, iterator) {
 GitHubWrapper.prototype.commits = function(owner, repo, iterator, lastReadSha, includeDetails) {
    var options = {user: owner, repo: repo};
    if( lastReadSha ) {
+      console.log('restarting from last read '+lastReadSha);//debug
       options.sha = lastReadSha
    }
    if( includeDetails ) {

@@ -66,7 +66,7 @@ function _interval(units, span, cached) {
       var d = moment.utc(), res;
       if( i > 0 ) { d.subtract(units, i); }
       var ds = fxns.intervalKey(d, units);
-      out[ds] = _.extend({net: 0, avg: 0, _c: 0}, cache);
+      out[ds] = _.extend({net: 0, avg: 0, _c: 0}, cache[ds]||{});
    }
    return out;
 }

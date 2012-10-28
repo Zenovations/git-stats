@@ -37,8 +37,6 @@ function StatsBuilder(conf) {
       reposFound: []
    };
 
-//   logger.log(util.debug(this.cache.stats, false, 5, true));
-//   logger.log(util.debug(this.cache.trends, false, 5, true));
    var promises = [];
    promises.push( this.gh.repos(_.bind(this.addRepo, this)) );
    promises.push( this.gh.orgs(_.bind(this.addOrg,  this)) );
@@ -46,9 +44,8 @@ function StatsBuilder(conf) {
       .then(_.bind(function() {
          // we only do this if no errors occurred and all data was processed; in the case that some data was skipped,
          // or an error occurred, we could be missing a valid repo and accidentally destroy the data
-         logger.debug('reposFound', this.tmp.reposFound);
          _.difference(_.keys(this.cache.repos), this.tmp.reposFound).forEach(_.bind(function(k) { //todo-abstract
-            logger.debug('deleted old repo', k);
+            logger.warn('deleted old repo', k);
             delete this.cache.repos[k];
          }, this));
          return this;
@@ -71,10 +68,9 @@ function StatsBuilder(conf) {
             fxns.addStats(this.cache.total.stats, v.stats);
          }, this));
 
-         //todo
-         //todo
-         //todo
-         //fxns.cache(this.cache, conf); //todo
+         if( conf.cache_file ) {
+            fxns.cache(this.cache, conf);
+         }
       }, this));
 }
 
@@ -97,12 +93,12 @@ StatsBuilder.prototype.addOrg = function(org) {
    if( !this.conf.filters.org || this.conf.filters.org(org, this.conf) ) {
       logger.info('ORG', org.login);
       var orgs = this.cache.orgs, orgEntry = {name: org.login, url: org.url};
-      if(_.indexOf(orgs, orgEntry) < 0 ) {
+      if(_.where(orgs, orgEntry).length < 1 ) {
          this.cache.orgs.push(orgEntry);
       }
       promises.push( this.gh.repos(org.login, _.bind(this.addRepo, this)) );
    }
-   return Q.when(promises);
+   return Q.all(promises);
 };
 
 StatsBuilder.prototype.addRepo = function(data) {

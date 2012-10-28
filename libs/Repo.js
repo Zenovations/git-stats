@@ -24,7 +24,11 @@ function Repo(data, conf, total, cache) {
    this.collectBytes = conf.static.bytes || (conf.trends.active && conf.trends.collect.bytes);
    this.staticKeys = fxns.activeKeys(conf.static);
    this.trendKeys = this.repoTrendsActive? fxns.activeKeys(conf.trends.collect) : [];
-   this.filters = _fileRelatedFilters(conf);
+   this.fileFilter = conf.filters.file;
+
+   //todo coupled with StatsBuilder.addRepo; meh
+   this.lastRead = cache.lastRead;
+   this.latestRead = cache.latestRead;
 
    // coupled witch StatsBuilder.addRepo and used below in addCommit (see notes there)
    this.firstCommit = null;
@@ -93,7 +97,7 @@ Repo.prototype.addCommit = function(commit) {
    }
 
    // parse the commit/commitDetail objects and obtain all stats for them
-   var changes  = _parseCommitChanges(commit, this.collectBytes, this.filters);
+   var changes  = _parseCommitChanges(commit, this.collectBytes, this.fileFilter);
 
    var when = moment(commit.commit.committer.date).utc();
    logger.info('  C', this.name, commit.sha, when.format());
@@ -145,17 +149,16 @@ function logXLimit(meta) {
    meta && logger[m](k, qty);
 }
 
-function _parseCommitChanges(commit, hasBytes, filters) {
+function _parseCommitChanges(commit, hasBytes, fileFilter) {
    var stats = { files: 0, bytes: 0, lines: 0, adds: 0, deletes: 0, commits: 1 };
    if( commit.files ) {
       var f, files = commit.files, i = ~~(files && files.length);
       while(i--) {
          f = files[i];
 
-         console.log('file', f);//debug
-//         if( !_passesFilters(f.path, filters) ) {
-//            continue;
-//         }
+         if( fileFilter && !fileFilter(f) ) {
+            continue;
+         }
 
          if( hasBytes ) {
             stats.bytes += fxns.analyzePatch(f.patch).diff;
@@ -205,13 +208,4 @@ function _status(meta, cache) {
    else {
       return 'NOCHANGE';
    }
-}
-
-function _fileRelatedFilters(conf) {
-   _.pick(conf.filters, 'file', 'dir');
-}
-
-function _passesFilters(file, filters) {
-   if( filters.file && !filters.file() )
-   return true;
 }

@@ -9,7 +9,7 @@ var winston = require('winston');
 
 module.exports = {
    transports: [
-      new winston.transports.Console({colorize: true, prettyPrint: true, levels: levels('debug')})
+      new winston.transports.Console({colorize: true, prettyPrint: true, levels: levels('info')})
       //, new winston.transports.File({ filename: '/tmp/git-stats.log', timestamp: true, json: true, levels: levels('info') })
    ]
 };

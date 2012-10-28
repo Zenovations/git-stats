@@ -11,24 +11,22 @@ module.exports = {
    // We can't see private repositories unless we log in.
    pass: null,
 
-   // how shall we output the data?
+   // how shall we output the data? when this is set to csv, it only outputs trends (or static if trends is disabled)
+   // and never outputs both as this would not make any organizational sense
    format: 'json', // 'json', 'xml', or 'csv'
 
-   // where shall we output it to?
-   to: 'stdout',                     // print to console
+   // where shall we output it to? this can be 'stdout', an email address, or a filename
+   to: 'stdout',                         // print to console
    //to: './github-stats-'+USER+'.json', // output to a file
-   //to: 'user@gmail.com',           // send results via email
+   //to: 'user@gmail.com',               // send results via email
 
-   // setting this to false will add formatting (returns, indentation) to the outputted data for human readability
+   // setting this to false will add returns/indentation for human readability
    compress: true,
 
    // this caches all stats so that only repos/files modified since we last collected stats are read
    // it can be turned off by setting this to a falsy value, but that will greatly increase overhead
+   // and make it much more likely to exceed the GitHub API rate limits
    cache_file: '/tmp/github-stats-'+USER+'.cache.json',
-
-   // setting this to true will strip out any stat with no data (where less than 1 entry exists)
-   // making the data set smaller but requiring the recipient to fill in the missing parts itself for charting
-   strip_zero_trends: false,
 
    // controls stats collected for each repository as of today; does not include any historical data for comparison
    // watchers, issues, and forks are essentially free (one request per repo), the other items configurable here come
@@ -194,6 +192,11 @@ module.exports = {
          path: "/usr/local/bin/sendmail",
          args: ["-f sender@example.com"]
       }
-   }
+   },
+
+   // setting this to true will strip out any trend row with no data (where less than 1 extry exists)
+   // making the data set smaller but probably messing up the data if it's used for charting
+   strip_zero_trends: false
+
 };
 

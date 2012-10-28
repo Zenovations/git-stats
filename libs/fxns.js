@@ -33,11 +33,8 @@ fxns.outputType = function(to) {
    else if( VALID_EMAIL.test(to) ) {
       return 'email';
    }
-   else if( FS.existsSync(to) ) {
-      return 'file';
-   }
    else {
-      return 'unknown';
+      return 'file';
    }
 };
 
@@ -121,16 +118,6 @@ fxns.toCsv = function(stats) {
 fxns.prepStatsForXml = function(stats) {
    var statsCopy = _deepCopy(stats); // quick and dirty deep copy
    return prepArraysForXml(prepReposForXml(statsCopy));
-};
-
-/**
- * Convert StatsBuilder internal trends into XML compatible format
- * @param {object} trends
- * @return {object} a modified deep copy of the original
- */
-fxns.prepTrendsForXml = function(trends) {
-   var data = _deepCopy(trends); // quick and dirty deep copy
-   return prepArraysForXml(prepReposForXml(data), true);
 };
 
 fxns.sendEmail = function(to, message, conf) {
@@ -230,7 +217,8 @@ fxns.cacheDefaults = {
       stats: [],
       trends: {}
    },
-   repos: {}
+   repos: {},
+   lastConfig: {}
 };
 
 fxns.readCache = function(conf) {
@@ -345,44 +333,37 @@ function _bytes(txt) {
 }
 
 function prepArraysForXml(data, trends) {
-   if( _.isArray(data) ) {
-      var i = data.length;
-      while(i--) {
-         if(_.isArray(data[i]) && trends ) {
-            data[i] = prepTrendEntry(data[i]);
+   if( _.isObject(data) ) {
+      _.each(data, function(v, k) {
+         if(typeof(k) === 'string' && k.indexOf('_') === 0) {
+            delete data[k];
          }
-         else if( _.isObject(data[i]) ) {
-            prepArraysForXml(data[i], trends);
-         }
-         else if( data[i] === null ) {
+         else if( v === null ) {
             // https://github.com/appsattic/node-data2xml/issues/2
-            data[i] = '';
+            data[k] = '';
          }
-      }
-   }
-   else if( _.isObject(data) ) {
-      for (var k in data) {
-         if (data.hasOwnProperty(k) ) {
-            if( data[k] === null ) {
-               // https://github.com/appsattic/node-data2xml/issues/2
-               data[k] = '';
-            }
-            else if( _.isArray(data[k]) ) {
-               var v = data[k];
+         else if( _.isArray(v) ) {
+            data[k] = {};
+            data[k][ inflection.singularize(k) ] = prepArraysForXml(v);
+         }
+         else if(_.isObject(v) ) {
+            if( trends && k in {years: 1, months: 1, weeks: 1, days: 1} ) {
+               // if we are inside the trends object and encounter one of our stat sets, then
+               // assign special node names to each child object and put the date into an attribute
                data[k] = {};
-               data[k][ inflection.singularize(k) ] = prepArraysForXml(v);
+               data[k][ inflection.singularize(k) ] = _.map(v, prepTrendEntry);
             }
-            else if(_.isObject(data[k]) ) {
-               prepArraysForXml(data[k], trends);
+            else {
+               prepArraysForXml(v, trends || k=='trends');
             }
          }
-      }
+      });
    }
    return data;
 }
 
-function prepTrendEntry(vals) {
-   return { _attr: { 'utc': vals[0] }, _value: vals[1] };
+function prepTrendEntry(stat, key) {
+   return { _attr: { 'utc': key }, net: stat.net, avg: stat.avg };
 }
 
 function prepReposForXml(stats) {

@@ -1,11 +1,14 @@
 
 # git-stats
 
-I built this to retrieve interesting stats about my GitHub projects and stuf them into a useful json data file, so I can hook
-this to a Cron Job or GitHub hook and build some charts on my site.
+Retrieve interesting stats (configurable) about GitHub projects and stuff them into a useful data file (json/csv/xml),
+so they can be used to generate pretty charts and trends.
 
 It can parse some pretty big repos without trouble, even if so many requests must be made that GitHub's rate limits
-will kick in (it stops when the rate limit is exceeded and picks up where it left off on the next run).
+will be exceeded.
+
+I wrote this as a quick and dirty tool for my own use but it's probably adaptable enough to help anyone wanting a
+simple way to generate stats via the API.
 
 ## Features
 
@@ -23,7 +26,7 @@ will kick in (it stops when the rate limit is exceeded and picks up where it lef
 
 ## Usage
 
-The simplest way to utilize git-stats is to compile a static json file (via a cron job or prompt)
+The simplest way to utilize git-stats is to compile a static file (via a cron, upstart, or scheduled service)
 which can be requsted via HTTP. This is done with `app.js`:
 
     # Copy `config.sample.js` to `config.js` and set username/password
@@ -42,6 +45,10 @@ You may also generate stats within your own application by including the git-sta
        .fail(function(e) {
           console.error(e);
        });
+
+The config.js file is not utilized when git-stats is used as a library. However, the default settings from
+config.sample.js are used for anything not passed in the config. Of course, the settings for sending emails
+and output formats will be completely ignored as these are the purview of the calling script.
 
 ### Configuration options
 
@@ -73,16 +80,13 @@ additional key/value to the output data.
 
 ## Limitations
 
-* Changes to the config file's stats gathering properties require that the cache be manually deleted and all stats
-  recompiled; this trade-off is annoying if stats change, but keeps the cache size much smaller since it only needs
-  to store compiled data and not all historic numbers (which would require a database)
+* Changes to the config file's stats may require the cache be deleted and all stats recompiled; this trade-off
+  is annoying but keeps the cache size much smaller since it only needs to store compiled data and not all
+  historic numbers (which would honestly require a full-on database)
 * Doesn't support OAuth
-* Does not handle branches (just reads the master)
+* Does not handle branches (just reads the master); this would be trivial to change but I didn't need it
 
 ## License
 
 Creative Commons: http://creativecommons.org/licenses/by-sa/3.0/
 
-# Testing
-
-N/A
