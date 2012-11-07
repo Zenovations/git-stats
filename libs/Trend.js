@@ -4,12 +4,12 @@ var fxns   = require('./fxns.js'),
     moment = require('moment'),
     log    = fxns.logger();
 
-function Trend(statKeys, intervals, cache) {
-   cache || (cache = {});
+function Trend(statKeys, intervals, normalizedCache) {
+   normalizedCache || (normalizedCache = {});
    this.data = {};
    this.stats = statKeys;
    _.each(this.stats, _.bind(function(key) {
-      this.data[key] = new Stat(key, intervals, cache[key]);
+      this.data[key] = new Stat(key, intervals, normalizedCache[key]);
    }, this));
 }
 module.exports = Trend;
@@ -25,10 +25,10 @@ Trend.prototype.toJSON = function() {
    return this.data;
 };
 
-function Stat(key, intervals, cache) {
+function Stat(key, intervals, normalizedCache) {
    this.type = key;
    this.intervals = _.keys(intervals);
-   this.data = buildTrends(intervals, cache);
+   this.data = buildTrends(intervals, normalizedCache);
 }
 
 Stat.prototype.acc = function(when, amt) {
@@ -52,26 +52,19 @@ function _inc(interval, dateKey, amt) {
 }
 
 
-function buildTrends(intervals, cached) {
+function buildTrends(intervals, normalizedCache) {
    var out = {};
-   _.each(intervals, function(v, k) {
-      out[k] = _interval(k, v, cached);
+   _.each(intervals, function(span, units) {
+      out[units] = _interval(span, normalizedCache[units]);
    });
    return out;
 }
 
-function _interval(units, span, cached) {
-   var out = {}, cache = cacheForTrend(cached, units), i = span;
+function _interval(increments, normalizedCache) {
+   var out = {}, i = increments;
    while(i--) {
-      var d = moment.utc(), res;
-      if( i > 0 ) { d.subtract(units, i); }
-      var ds = fxns.intervalKey(d, units);
-      out[ds] = _.extend({net: 0, avg: 0, _c: 0}, cache[ds]||{});
+      out[i] = _.extend({net: 0, avg: 0, _c: 0}, normalizedCache[i]);
    }
    return out;
-}
-
-function cacheForTrend(cache, units) {
-   return cache && cache[units]? cache[units] : {};
 }
 

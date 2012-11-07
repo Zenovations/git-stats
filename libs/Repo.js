@@ -12,13 +12,14 @@ var
 
 module.exports = Repo;
 
-function Repo(data, conf, total, cache) {
+function Repo(data, conf, intervalKeys, cache) {
    cache || (cache = {});
+   var repoCache = cache.repos[data.full_name] || {};
    this.name  = data.full_name;
    this.owner = data.owner.login;
    this.short = data.name;
    this.meta  = mapRepoData(data);
-   this.total = total;
+   this.total = cache.total || {};
    this.trendsActive = conf.trends.active;
    this.repoTrendsActive = conf.trends.active && conf.trends.repos;
    this.collectBytes = conf.static.bytes || (conf.trends.active && conf.trends.collect.bytes);
@@ -27,14 +28,14 @@ function Repo(data, conf, total, cache) {
    this.fileFilter = conf.filters.file;
 
    //todo coupled with StatsBuilder.addRepo; meh
-   this.lastRead = cache.lastRead;
-   this.latestRead = cache.latestRead;
+   this.lastRead = repoCache.lastRead;
+   this.latestRead = repoCache.latestRead;
 
    // coupled witch StatsBuilder.addRepo and used below in addCommit (see notes there)
    this.firstCommit = null;
 
    // the static numbers for this repo
-   this.stats = fxns.initStatSet(conf.static, cache.stats);
+   this.stats = fxns.initStatSet(conf.static, repoCache.stats);
 
    // update repo level stats directly; they are not cumulative
    _.extend(this.stats, {
@@ -43,10 +44,10 @@ function Repo(data, conf, total, cache) {
       forks: ~~data.forks
    });
 
-   this.status = _status(this.meta, cache);
+   this.status = _status(this.meta, repoCache);
 
    if( this.repoTrendsActive ) {
-      this.trends = new Trend(this.trendKeys, conf.trends.intervals, cache.trends);
+      this.trends = new Trend(this.trendKeys, conf.trends.intervals, fxns.normalizeTrends(fxns.activeKeys(conf.trends.collect), intervalKeys, cache.intervalKeys, repoCache));
    }
 
    if( this.status !== 'NOCHANGE' ) {

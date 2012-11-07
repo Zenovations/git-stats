@@ -218,6 +218,7 @@ fxns.cacheDefaults = {
       trends: {}
    },
    repos: {},
+   intervalKeys: {},
    lastConfig: {}
 };
 
@@ -271,8 +272,63 @@ fxns.analyzePatch = function(patch) {
    return out;
 };
 
+fxns.intervalKeys = function(intervals) {
+   var out = {}, now = moment.utc();
+   _.each(intervals, function(span, units) {
+      var i = span, d = now.clone();
+      var set = out[units] = [];
+      while(i--) {
+         set[i] = fxns.intervalKey(d, units);
+         d.subtract(units, 1);
+      }
+   });
+   return out;
+};
+
 fxns.intervalKey = function(d, units) {
    return fxns.startOf(d, units).utc().format();
+};
+
+/**
+ * Fetch the index in the cached intervalsKey object for the date provided or return -1 if not found
+ *
+ * @param {object} intervalKeys
+ * @param {moment} d
+ * @param [units]
+ * @return {int}
+ */
+fxns.intervalIndex = function(intervalKeys, d, units) {
+   var set = intervalKeys[units];
+   return set? _.indexOf(set, fxns.intervalKey(d, units)) : -1;
+};
+
+/**
+ * Given a set of cached trends and a set of interval keys, make the contents of the cached data
+ * match up with the interval keys so that the arrays are the same length and the contents appear in the
+ * correct order. Anything in the cached data not in intervalKeys is discarded.
+ *
+ * @param {array} statKeys
+ * @param {object} intervalKeys
+ * @param {object} cachedTrendKeys
+ * @param {object} cachedTrends
+ */
+fxns.normalizeTrends = function(statKeys, intervalKeys, cachedTrendKeys, cachedTrends) {
+   cachedTrends || (cachedTrends = {});
+   cachedTrendKeys || (cachedTrendKeys = {});
+   var out = {};
+   _.each(statKeys, function(statKey) {
+      var set = out[statKey] = {};
+      _.each(intervalKeys[statKey], function(dateKeys, units) {
+         var keys = cachedTrendKeys[units] || [], cache = cachedTrends[units], idx, i = -1, len = dateKeys.length, vals = [], v;
+         while(++i < len) {
+            idx = _.indexOf(keys, dateKeys[i]);
+            v = idx > -1? cache[idx] : {};
+            vals.push(v);
+         }
+         set[units] = vals;
+      });
+   });
+   return out;
 };
 
 fxns.allResolved = function(promises) {

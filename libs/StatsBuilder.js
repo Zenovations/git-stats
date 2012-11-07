@@ -20,14 +20,17 @@ exports.load = function(conf) {
 function StatsBuilder(conf) {
    this.gh    = new GitHubWrap(conf.user, conf.pass);
    this.conf  = conf;
-   this.since = fxns.oldestInterval(conf.trends.intervals);
+   this.since = fxns.oldestInterval(conf.trends.intervals); //todo put this to use!
    this.cache = fxns.readCache(conf);
 
    // look over the cached data and verify the integrity
    this.cache.total.stats = fxns.initStatSet(conf.static, this.cache.total.stats);
 
-   // build trend to total repos
    if( conf.trends.active ) {
+      // each time we build stats we'll recalculate which intervals are being monitored
+      this.intervalKeys = fxns.intervalKeys(conf.trends.intervals);
+
+      // build trend to total repos
       this.cache.total.trends = new Trend(fxns.activeKeys(conf.trends.collect), conf.trends.intervals, this.cache.total.trends);
    }
 
@@ -79,7 +82,7 @@ StatsBuilder.prototype.raw = function() {
 };
 
 StatsBuilder.prototype.format = function(format, compress) {
-   var data = _.pick(this.cache, this.conf.trends.active? ['total', 'orgs', 'repos'] : ['total', 'orgs']);
+   var data = _.pick(this.cache, this.conf.trends.active? ['total', 'orgs', 'repos', 'intervalKeys'] : ['total', 'orgs']);
    format == 'xml' && (data = fxns.prepStatsForXml(data));
    //todo csv is busted :(
    //todo
@@ -107,7 +110,7 @@ StatsBuilder.prototype.addRepo = function(data) {
       var fullRepoName = data.full_name, cache = this.cache;
       this.tmp.reposFound.push(fullRepoName); // used to delete cached repos that don't exist anymore
 
-      var repo = new Repo(data, conf, this.cache.total, cache.repos[fullRepoName]);
+      var repo = new Repo(data, conf, this.intervalKeys, cache);
       logger.info(repo.status, repo.name);
 
       if( repo.status !== 'NOCHANGE' ) {
