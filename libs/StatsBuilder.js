@@ -31,7 +31,9 @@ function StatsBuilder(conf) {
       this.intervalKeys = fxns.intervalKeys(conf.trends.intervals);
 
       // build trend to total repos
-      this.cache.total.trends = new Trend(fxns.activeKeys(conf.trends.collect), conf.trends.intervals, this.cache.total.trends);
+      var statKeys = fxns.activeKeys(conf.trends.collect);
+      var normalizedTrends = fxns.normalizeTrends(statKeys, this.intervalKeys, this.cache.intervalKeys, this.cache.total.trends);
+      this.cache.total.trends = new Trend(statKeys, conf.trends.format, this.intervalKeys, normalizedTrends);
    }
 
    // temporary state info used internally to connect the methods together without too much coupling
@@ -66,6 +68,9 @@ function StatsBuilder(conf) {
          }
       }, this))
       .fin(_.bind(function() {
+         // replace the cached intervalKeys
+         this.cache.intervalKeys = this.intervalKeys;
+
          // calculate total stats
          _.each(this.cache.repos, _.bind(function(v) { //todo-abstract
             fxns.addStats(this.cache.total.stats, v.stats);

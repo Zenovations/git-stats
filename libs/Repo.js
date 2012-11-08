@@ -47,7 +47,8 @@ function Repo(data, conf, intervalKeys, cache) {
    this.status = _status(this.meta, repoCache);
 
    if( this.repoTrendsActive ) {
-      this.trends = new Trend(this.trendKeys, conf.trends.intervals, fxns.normalizeTrends(fxns.activeKeys(conf.trends.collect), intervalKeys, cache.intervalKeys, repoCache));
+      var normalizedTrends = fxns.normalizeTrends(fxns.activeKeys(conf.trends.collect), intervalKeys, cache.intervalKeys, repoCache.trends);
+      this.trends = new Trend(this.trendKeys, conf.trends.format, intervalKeys, normalizedTrends);
    }
 
    if( this.status !== 'NOCHANGE' ) {
@@ -125,7 +126,7 @@ Repo.prototype.addCommit = function(commit) {
 Repo.prototype.toJSON = function() {
    return _.extend(
       { lastRead: this.lastRead, latestRead: this.latestRead },
-      this.meta, //todo need to format the moments!
+      this.meta,
       {stats: this.stats},
       this.repoTrendsActive? {trends: this.trends} : {}
    )

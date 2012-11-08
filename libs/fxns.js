@@ -200,8 +200,7 @@ fxns.startOf = function(when, units) {
 fxns.cache = function(stats, conf) {
    var cacheFileName = conf.cache_file;
    if( cacheFileName ) {
-      stats = _deepCopy(stats); // make a deep copy
-      var cache = clearZeroTrends(stats);
+      var cache = fxns.cacheFormat(stats);
       cache.lastConfig = _copyConfForCache(conf);
       FS.writeFile(cacheFileName, JSON.stringify(cache), function (err) {
          if (err) throw err;
@@ -227,6 +226,7 @@ fxns.readCache = function(conf) {
       //todo use a reviver function to make moments out of iso date strings
       var path = conf.cache_file, cache = FS.existsSync(path)? fxns.fromJson(FS.readFileSync(path)) : null;
       if( cache && _statsFieldsUpdatedInConf(cache.lastConfig, conf) ) {
+         //todo make this more sophisticated so that innocuous changes don't require a full rebuild
          log.warn('configuration changed, deleting cache and starting from scratch');
          fxns.cache(fxns.cacheDefaults, conf);
          return fxns.cacheDefaults;
@@ -313,22 +313,32 @@ fxns.intervalIndex = function(intervalKeys, d, units) {
  * @param {object} cachedTrends
  */
 fxns.normalizeTrends = function(statKeys, intervalKeys, cachedTrendKeys, cachedTrends) {
-   cachedTrends || (cachedTrends = {});
-   cachedTrendKeys || (cachedTrendKeys = {});
    var out = {};
    _.each(statKeys, function(statKey) {
       var set = out[statKey] = {};
-      _.each(intervalKeys[statKey], function(dateKeys, units) {
-         var keys = cachedTrendKeys[units] || [], cache = cachedTrends[units], idx, i = -1, len = dateKeys.length, vals = [], v;
+      _.each(intervalKeys, function(dateKeys, units) {
+         var i = -1, len = dateKeys.length, vals = [];
          while(++i < len) {
-            idx = _.indexOf(keys, dateKeys[i]);
-            v = idx > -1? cache[idx] : {};
-            vals.push(v);
+            vals.push(_getCachedByKey(statKey, units, dateKeys[i], cachedTrendKeys, cachedTrends));
          }
          set[units] = vals;
       });
    });
    return out;
+};
+
+/**
+ * @param {string} dateKey
+ * @param {Array} trendKeys
+ * @param {Array} trendArray
+ * @return {object}
+ */
+fxns.getTrendByKey = function(dateKey, trendKeys, trendArray) {
+   trendKeys || (trendKeys = []);
+   trendArray || (trendArray = []);
+   var idx = _.indexOf(trendKeys, dateKey);
+   var e   = idx > -1 && trendArray.length > idx? trendArray[idx] : null;
+   return e? _.defaults(e, {avg: 0, net: 0, _c: 0}) : null;
 };
 
 fxns.allResolved = function(promises) {
@@ -377,6 +387,29 @@ fxns.toJson = function(o, compress) {
 
 fxns.fromJson = function(s) {
    return JSON.parse(s, dateReviver);
+};
+
+fxns.cacheFormat = function(o) {
+   if( moment.isMoment(o) ) {
+      return o.utc().format();
+   }
+   else if(_.isObject(o)) {
+      o = o.clone? o.clone() : _.clone(o);
+      _.each(o, function(v, k) {
+         if( _.isObject(v) ) {
+            if(v._cache) {
+               o[k] = v._cache(v);
+            }
+            else {
+               o[k] = fxns.cacheFormat(v);
+            }
+         }
+      });
+      return o;
+   }
+   else {
+      return o;
+   }
 };
 
 function _deepCopy(obj) {
@@ -432,22 +465,6 @@ function prepReposForXml(stats) {
       }
       stats.repos = arr;
    }
-   return stats;
-}
-
-function clearZeroTrends(stats) {
-   _.each(stats, function(v, parentKey) {
-      if( _.isObject(v) && parentKey in {'years': 1, 'months': 1, 'weeks': 1, 'days': 1} ) {
-         _.each(stats[parentKey], function(v, childKey) {
-            if( v && v._c === 0 ) {
-               delete stats[parentKey][childKey];
-            }
-         });
-      }
-      else if(_.isObject(v) ) {
-         clearZeroTrends(v);
-      }
-   });
    return stats;
 }
 
@@ -513,6 +530,8 @@ function dateStringer(key, value) {
    return value;
 }
 
+// we don't use `key` but it's part of predefined signature for JSON.parse
+//noinspection JSUnusedLocalSymbols
 function dateReviver(key, value) {
    if (typeof value === 'string') {
       var a = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2}(?:\.\d*)?)Z?$/.exec(value);
@@ -521,4 +540,30 @@ function dateReviver(key, value) {
       }
    }
    return value;
+}
+
+/**
+ * @param vals
+ * @param k1
+ * @param [k2]
+ * @param [k3]
+ * @param [k4]
+ * @param [k5]
+ * @return {*}
+ */
+function deepFind(vals, k1, k2, k3, k4, k5) {
+   if( vals && typeof(vals) === 'object' ) {
+      if( arguments.length > 2 ) {
+         return deepFind.apply(null, [vals[k1]].concat(_.toArray(arguments).slice(2)));
+      }
+      else if( arguments.length == 2 ) {
+         return vals[k1];
+      }
+   }
+   return vals;
+}
+
+function _getCachedByKey(statKey, units, dateKey, cachedKeys, cachedData) {
+   var keys = deepFind(cachedKeys, statKey, units)||[], idx = _.indexOf(keys, dateKey);
+   return idx > -1 && cachedData && cachedData.length > idx? cachedData[idx] : {};
 }

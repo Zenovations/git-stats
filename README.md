@@ -1,22 +1,22 @@
 
 # git-stats
 
-Retrieve interesting stats (configurable) about GitHub projects and stuff them into a useful data file (json/csv/xml),
-so they can be used to generate pretty charts and trends.
+Retrieve interesting stats (configurable) about GitHub projects attached to a given user/org and stuff them into a useful
+data file (json/csv/xml), so they can be used to generate pretty charts and trends.
 
 It can parse some pretty big repos without trouble, even if so many requests must be made that GitHub's rate limits
 will be exceeded.
 
 I wrote this as a quick and dirty tool for my own use but it's probably adaptable enough to help anyone wanting a
-simple way to generate stats via the API.
+simple way to generate stats and track trends via the GitHub API.
 
 ## Features
 
  * Simple (just configure repo and stats you want to collect, get your formatted (json/xml/csv) data and chart it)
  * Fast (stats are cumulative and cached, only data changed since last update is requested and parsed)
- * Handles rate limits gracefully (restarts where it left off last)
- * Handles large repositories (keeps a minimal amount of data in memory at any time)
- * Filtering (exclude orgs, repos, dirs, or files using a filter callback)
+ * Handles rate limits gracefully (if limit is exceeded, restarts where it left off last)
+ * Handles large numbers of commits (only keeps data from a single commit in memory at any time)
+ * Filtering (exclude orgs, repos, dirs, or files from the stats by using a filter callback)
 
 ## Installation
 
@@ -29,7 +29,8 @@ simple way to generate stats via the API.
 The simplest way to utilize git-stats is to compile a static file (via a cron, upstart, or scheduled service)
 which can be requsted via HTTP. This is done with `app.js`:
 
-    # Copy `config.sample.js` to `config.js` and set username/password
+Copy `config.sample.js` to `config.js` and set username/password, then run:
+
     node ./app.js
 
 This is preferable to building the stats in real time when they are requested due to the rate limits on GitHub's API.
@@ -39,27 +40,24 @@ You may also generate stats within your own application by including the git-sta
     var GitStats = require('git-stats');
     GitStats.run({user: 'katowulf', pass: 'xxxxx' })
        .then(function(results) {
-          console.log( results.getStats(format, compress) );
-          console.log( results.getTrends(format, compress) );
+          console.log( results.format(format, compress) );
        })
        .fail(function(e) {
           console.error(e);
        });
 
-The config.js file is not utilized when git-stats is used as a library. However, the default settings from
-config.sample.js are used for anything not passed in the config. Of course, the settings for sending emails
-and output formats will be completely ignored as these are the purview of the calling script.
+The config.js file is not utilized when git-stats is used as a library. They are passed directly into the `run`
+method by the caller instead. Any settings not provided to the `run` method are pulled from config.sample.js instead,
+so only overridden settings need to be specified. Of course, some of the settings will be ignored (e.g. the lib will
+not automatically send emails as this is considered the app's job).
 
 ### Configuration options
 
-//todo
-
-//todo all times are in utc
+See the comments in config.sample.js
 
 ### Examples
 
-//todo examples
-//todo demo
+Visit http://katowulf.github.com/git-stats
 
 ### Memory usage, CPU cycles, and storage space
 

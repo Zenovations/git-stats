@@ -115,7 +115,33 @@ module.exports = {
          months: 12,
          weeks: 25,
          days: 30
+      },
+
+      // What calculation do we put into the output?
+      //
+      // "net" refers to the cumulative total of all samples obtained and is generally useful for commit actions
+      // "avg" refers to the total divided by the number of samples (the average of all samples over this period)
+      // "raw" creates an object in the format { net: ##, avg: ## }
+      //
+      // In general, all stats obtained per commit make the most sense as a cumulative total (if 3 files are
+      // deleted today, todays value will be 3 less than yesterday) rather than an average (today's value is the
+      // average number of files added today)
+      //
+      // Stats obtained per repo generally make no sense if done as a net and should use "avg"
+      // (the number of open issues this month is the average of all samples taken rather than the cumulative
+      //  total of all samples)
+      format: {
+         watchers: 'avg',
+         issues: 'avg',
+         forks: 'avg',
+         commits: 'net',
+         files: 'net',
+         bytes: 'net',
+         lines: 'net',
+         adds: 'net',
+         deletes: 'net'
       }
+
    },
 
    filters: {
@@ -192,11 +218,7 @@ module.exports = {
          path: "/usr/local/bin/sendmail",
          args: ["-f sender@example.com"]
       }
-   },
-
-   // setting this to true will strip out any trend row with no data (where less than 1 extry exists)
-   // making the data set smaller but probably messing up the data if it's used for charting
-   strip_zero_trends: false
+   }
 
 };
 

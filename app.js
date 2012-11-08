@@ -8,9 +8,6 @@ var conf       = require('./config.js'),
 sb.load(conf)
       .then(function(stats) {
          var data = stats.format(conf.format, conf.compress);
-         if( conf.strip_zero_trends ) {
-            fxns.removeZeroTrends(data);
-         }
          switch(fxns.outputType(conf.to)) {
             case 'stdout':
                // don't use logger here; it must get printed
