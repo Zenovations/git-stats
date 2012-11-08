@@ -87,7 +87,20 @@ StatsBuilder.prototype.raw = function() {
 };
 
 StatsBuilder.prototype.format = function(format, compress) {
-   var data = _.pick(this.cache, this.conf.trends.active? ['total', 'orgs', 'repos', 'intervalKeys'] : ['total', 'orgs']);
+   var trendsActive = this.conf.trends.active;
+   var data = _.pick(this.cache, trendsActive? ['total', 'orgs', 'repos', 'intervalKeys'] : ['total', 'orgs', 'repos']);
+   if( !trendsActive ) {
+      delete data.total.trends;
+      data.repos && _.each(data.repos, function(repo, name) {
+         data.repos[name] = repo = _.clone(repo); // don't modify the original data in cache
+         //todo
+         //todo
+         //todo
+         //todo
+         //todo
+         //todo
+      });
+   }
    format == 'xml' && (data = fxns.prepStatsForXml(data));
    //todo csv is busted :(
    //todo

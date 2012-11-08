@@ -84,7 +84,7 @@ function formatStat(format, data) {
 function _formatter(format) {
    switch(format) {
       case 'raw':
-         return function(values) { return _.pick(values, 'avg', 'net'); };
+         return function(values) { return _.map(values, function(v) { return _.pick(v, 'avg', 'net'); }); };
       case 'net':
       case 'avg':
          return function(values) { return _.pluck(values, format); };

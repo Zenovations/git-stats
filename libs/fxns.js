@@ -103,12 +103,53 @@ fxns.toXml = function(stats, compress) {
  * @return {string}
  */
 fxns.toCsv = function(stats) {
-   var data = _.toArray(stats.repos); //todo shouldn't be relying on a specific data structure
-   return json2csv.parse({
-      data: data,
-      fields: data.length? _.keys(data[0]) : []
-   });
+   if( stats.total.trends ) {
+      return json2csv.parse({
+         data: _buildCsvTrends(stats),
+         fields: ['repo', 'stat', 'total'].concat(_buildCsvHeadings(stats.intervalKeys))
+      });
+   }
+   else {
+      return json2csv.parse({
+         data: _buildCsvStats(stats),
+         fields: ['repo'].concat(_.keys(stats.total.stats))
+      })
+   }
 };
+
+function _buildCsvStats(stats) {
+   var out = [];
+   out.push(_csvStatRow('total', stats.total));
+   if( stats.repos ) {
+      _.each(stats.repos, function(repo, name) {
+         out.push(_csvStatRow(name, repo.stats));
+      });
+   }
+   return out;
+}
+
+function _csvStatRow(repo, stats) {
+   return _.extend({repo: repo}, stats);
+}
+
+function _buildCsvTrends(data) {
+
+}
+
+function _csvTrend(stats, trendData) {
+
+}
+
+function _buildCsvHeadings(intervalKeys) {
+   var out = [];
+   _.each(intervalKeys, function(keys, units) {
+      out.push(units);
+      _.each(keys, function(k) {
+         out.push(k);
+      });
+   });
+   return out;
+}
 
 /**
  * Convert StatsBuilder internal data into XML compatible format
