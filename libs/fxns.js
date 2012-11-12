@@ -104,9 +104,11 @@ fxns.toXml = function(stats, compress) {
  */
 fxns.toCsv = function(stats) {
    if( stats.total.trends ) {
+      var fields = ['repo', 'stat', 'total'].concat(_buildCsvHeadings(stats.intervalKeys));
+      log.debug(_buildCsvTrends(fields, stats));
       return json2csv.parse({
-         data: _buildCsvTrends(stats),
-         fields: ['repo', 'stat', 'total'].concat(_buildCsvHeadings(stats.intervalKeys))
+         data: _buildCsvTrends(fields, stats),
+         fields: fields
       });
    }
    else {
@@ -119,7 +121,7 @@ fxns.toCsv = function(stats) {
 
 function _buildCsvStats(stats) {
    var out = [];
-   out.push(_csvStatRow('total', stats.total));
+   out.push(_csvStatRow('total', stats.total.stats));
    if( stats.repos ) {
       _.each(stats.repos, function(repo, name) {
          out.push(_csvStatRow(name, repo.stats));
@@ -132,12 +134,54 @@ function _csvStatRow(repo, stats) {
    return _.extend({repo: repo}, stats);
 }
 
-function _buildCsvTrends(data) {
+function _buildCsvTrends(fields, stats) {
+   var out = [], statKeys = _.keys(stats.total.trends);
 
+   // add totals
+   _trendsFor(out, fields, 'total', statKeys, stats.total);
+
+   // add repos
+   _.each(stats.repos, function(repo, name) {
+      _trendsFor(out, fields, name, statKeys, repo)
+   });
+
+   return out;
 }
 
-function _csvTrend(stats, trendData) {
+function _trendsFor(out, fields, repoName, statKeys, repo) {
+   _.each(statKeys, function(key) {
+      out.push(_csvTrend(repoName, key, fields, repo.stats[key], repo.trends[key]));
+   });
+}
 
+function _csvTrend(repoName, statName, fields, total, trend) {
+   var out = {}, c = null, i = 0;
+   _.each(fields, function(f) {
+      switch(f) {
+         case 'repo':
+            out[f] = repoName;
+            break;
+         case 'stat':
+            out[f] = statName;
+            break;
+         case 'total':
+            out[f] = total;
+            break;
+         case 'years':
+         case 'months':
+         case 'weeks':
+         case 'days':
+            out[f] = '';
+            i = 0;
+            c = trend[f];
+            break;
+         default:
+            // the actual date keys
+            // since they are sequential and must appear after the interval, we can just increment through them
+            out[f] = c[i++];
+      }
+   });
+   return out;
 }
 
 function _buildCsvHeadings(intervalKeys) {
@@ -153,8 +197,10 @@ function _buildCsvHeadings(intervalKeys) {
 
 /**
  * Convert StatsBuilder internal data into XML compatible format
+ * SIDE EFFECT: modifies `stats`
+ *
  * @param {object} stats
- * @return {object} a modified deep copy of the original
+ * @return {object} the `stats` object
  */
 fxns.prepStatsForXml = function(stats) {
    var statsCopy = _deepCopy(stats); // quick and dirty deep copy
@@ -354,13 +400,16 @@ fxns.intervalIndex = function(intervalKeys, d, units) {
  * @param {object} cachedTrends
  */
 fxns.normalizeTrends = function(statKeys, intervalKeys, cachedTrendKeys, cachedTrends) {
+   cachedTrends || (cachedTrends = {});
+   cachedTrendKeys || (cachedTrendKeys = {});
    var out = {};
    _.each(statKeys, function(statKey) {
       var set = out[statKey] = {};
+      var trendsForStat = cachedTrends[statKey]||[];
       _.each(intervalKeys, function(dateKeys, units) {
          var i = -1, len = dateKeys.length, vals = [];
          while(++i < len) {
-            vals.push(_getCachedByKey(statKey, units, dateKeys[i], cachedTrendKeys, cachedTrends));
+            vals.push(_getCachedByKey(dateKeys[i], cachedTrendKeys[units], trendsForStat[units]));
          }
          set[units] = vals;
       });
@@ -604,7 +653,7 @@ function deepFind(vals, k1, k2, k3, k4, k5) {
    return vals;
 }
 
-function _getCachedByKey(statKey, units, dateKey, cachedKeys, cachedData) {
-   var keys = deepFind(cachedKeys, statKey, units)||[], idx = _.indexOf(keys, dateKey);
+function _getCachedByKey(dateKey, cachedKeys, cachedData) {
+   var idx = _.indexOf(cachedKeys||[], dateKey);
    return idx > -1 && cachedData && cachedData.length > idx? cachedData[idx] : {};
 }

@@ -24,7 +24,8 @@ function StatsBuilder(conf) {
    this.cache = fxns.readCache(conf);
 
    // look over the cached data and verify the integrity
-   this.cache.total.stats = fxns.initStatSet(conf.static, this.cache.total.stats);
+   // always zero totals because they are re-totaled based on repo stats after each run
+   this.cache.total.stats = fxns.initStatSet(conf.static, {});
 
    if( conf.trends.active ) {
       // each time we build stats we'll recalculate which intervals are being monitored
@@ -77,6 +78,8 @@ function StatsBuilder(conf) {
          }, this));
 
          if( conf.cache_file ) {
+            logger.debug(this.cache.total.trends.data.commits.data.months);//debug
+            logger.debug(this.cache.repos['katowulf/git-stats'].trends.data.commits.data.months);//debug
             fxns.cache(this.cache, conf);
          }
       }, this));
@@ -88,24 +91,8 @@ StatsBuilder.prototype.raw = function() {
 
 StatsBuilder.prototype.format = function(format, compress) {
    var trendsActive = this.conf.trends.active;
-   var data = _.pick(this.cache, trendsActive? ['total', 'orgs', 'repos', 'intervalKeys'] : ['total', 'orgs', 'repos']);
-   if( !trendsActive ) {
-      delete data.total.trends;
-      data.repos && _.each(data.repos, function(repo, name) {
-         data.repos[name] = repo = _.clone(repo); // don't modify the original data in cache
-         //todo
-         //todo
-         //todo
-         //todo
-         //todo
-         //todo
-      });
-   }
+   var data = _extractDataFromCache(this.conf.trends.active, this.cache);
    format == 'xml' && (data = fxns.prepStatsForXml(data));
-   //todo csv is busted :(
-   //todo
-   //todo
-   //todo
    return fxns.format(format, compress, data);
 };
 
@@ -173,4 +160,15 @@ function needsCommitDetails(conf) {
 
 function isRateError(e) {
    return _.isObject(e) && e.code == 403 && e.message.indexOf('Rate Limit Exceeded') > -1;
+}
+
+function _extractDataFromCache(trendsActive, cache) {
+   var data = fxns.deepCopy(_.pick(cache, trendsActive? ['total', 'orgs', 'repos', 'intervalKeys'] : ['total', 'orgs', 'repos']));
+   if( !trendsActive ) {
+      delete data.total.trends;
+      data.repos && _.each(data.repos, function(repo, name) {
+         delete repo.trends;
+      });
+   }
+   return data;
 }

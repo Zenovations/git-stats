@@ -147,8 +147,10 @@ function mapRepoData(data) {
 }
 
 function logXLimit(meta) {
-   var k = 'x-ratelimit-remaining', qty = meta[k], m = qty && qty < 10? 'warn' : 'debug';
-   meta && logger[m](k, qty);
+   var k = 'x-ratelimit-remaining', qty = meta? meta[k] : 999;
+   if( qty < 100 ) {
+      logger.warn(k, qty);
+   }
 }
 
 function _parseCommitChanges(commit, hasBytes, fileFilter) {
@@ -201,10 +203,10 @@ function _status(meta, cache) {
    if( cache.lastRead ) {
       return 'RESUME';
    }
-   else if( !cache.updated ) {
+   else if( !cache || !cache.meta || !cache.meta.updated ) {
       return 'INIT';
    }
-   else if( meta.updated.diff(cache.updated) < 0 ) {
+   else if( meta.updated.diff(moment.utc(cache.meta.updated)) < 0 ) {
       return 'UPDATE';
    }
    else {

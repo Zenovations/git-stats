@@ -15,7 +15,8 @@ sb.load(conf)
                break;
             case 'email':
                fxns.sendEmail(conf.to, {
-                  message: '[git-stats] stats for '+conf.user,
+                  subject: '[git-stats] stats for '+conf.user,
+                  text: 'See attach a mint!',
                   attachments: [
                      { fileName: 'git-stats-'+conf.user+'.'+conf.format, contents: data }
                   ]
