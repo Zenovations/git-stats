@@ -9,9 +9,6 @@ var   Q          = require('q'),
 
 var PER_PAGE = 100;
 
-//todo the auth process here is a bit hokey, mostly because node-github's auth process is a bit hokey
-//todo how to improve it?
-
 /**
  * @param {string} user
  * @param {string} [pass]
@@ -20,6 +17,7 @@ var PER_PAGE = 100;
 function GitHubWrapper(user, pass) {
    this.gh = new GitHubApi({version: '3.0.0'});
    this.user = user;
+   //todo support oauth
    this.auth = auth(this.gh, user, pass);
 }
 
@@ -57,7 +55,6 @@ GitHubWrapper.prototype.repos = function(org, iterator) {
 GitHubWrapper.prototype.commits = function(owner, repo, iterator, lastReadSha, includeDetails) {
    var options = {user: owner, repo: repo};
    if( lastReadSha ) {
-      console.log('restarting from last read '+lastReadSha);//debug
       options.sha = lastReadSha
    }
    if( includeDetails ) {

@@ -20,7 +20,6 @@ exports.load = function(conf) {
 function StatsBuilder(conf) {
    this.gh    = new GitHubWrap(conf.user, conf.pass);
    this.conf  = conf;
-   this.since = fxns.oldestInterval(conf.trends.intervals); //todo put this to use!
    this.cache = fxns.readCache(conf);
 
    // look over the cached data and verify the integrity
@@ -78,8 +77,6 @@ function StatsBuilder(conf) {
          }, this));
 
          if( conf.cache_file ) {
-            logger.debug(this.cache.total.trends.data.commits.data.months);//debug
-            logger.debug(this.cache.repos['katowulf/git-stats'].trends.data.commits.data.months);//debug
             fxns.cache(this.cache, conf);
          }
       }, this));

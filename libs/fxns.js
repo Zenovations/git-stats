@@ -39,26 +39,6 @@ fxns.outputType = function(to) {
 };
 
 /**
- * Given a list of intervals (see config.sample.js->collect.intervals), calculate the start dates of each
- * and return the oldest.
- *
- * @param {object} intervals
- * @return {moment}
- */
-fxns.oldestInterval = function(intervals) {
-   var oldestInterval = null;
-   for(var k in intervals) {
-      if( intervals.hasOwnProperty(k) ) {
-         var d = moment.utc().subtract(k, intervals[k]);
-         if( !oldestInterval || d.diff(oldestInterval) < 0 ) {
-            oldestInterval = d;
-         }
-      }
-   }
-   return oldestInterval;
-};
-
-/**
  * Deliver according the the config settings
  * @param {object} conf
  * @param {string} stats
@@ -105,7 +85,6 @@ fxns.toXml = function(stats, compress) {
 fxns.toCsv = function(stats) {
    if( stats.total.trends ) {
       var fields = ['repo', 'stat', 'total'].concat(_buildCsvHeadings(stats.intervalKeys));
-      log.debug(_buildCsvTrends(fields, stats));
       return json2csv.parse({
          data: _buildCsvTrends(fields, stats),
          fields: fields
@@ -118,82 +97,6 @@ fxns.toCsv = function(stats) {
       })
    }
 };
-
-function _buildCsvStats(stats) {
-   var out = [];
-   out.push(_csvStatRow('total', stats.total.stats));
-   if( stats.repos ) {
-      _.each(stats.repos, function(repo, name) {
-         out.push(_csvStatRow(name, repo.stats));
-      });
-   }
-   return out;
-}
-
-function _csvStatRow(repo, stats) {
-   return _.extend({repo: repo}, stats);
-}
-
-function _buildCsvTrends(fields, stats) {
-   var out = [], statKeys = _.keys(stats.total.trends);
-
-   // add totals
-   _trendsFor(out, fields, 'total', statKeys, stats.total);
-
-   // add repos
-   _.each(stats.repos, function(repo, name) {
-      _trendsFor(out, fields, name, statKeys, repo)
-   });
-
-   return out;
-}
-
-function _trendsFor(out, fields, repoName, statKeys, repo) {
-   _.each(statKeys, function(key) {
-      out.push(_csvTrend(repoName, key, fields, repo.stats[key], repo.trends[key]));
-   });
-}
-
-function _csvTrend(repoName, statName, fields, total, trend) {
-   var out = {}, c = null, i = 0;
-   _.each(fields, function(f) {
-      switch(f) {
-         case 'repo':
-            out[f] = repoName;
-            break;
-         case 'stat':
-            out[f] = statName;
-            break;
-         case 'total':
-            out[f] = total;
-            break;
-         case 'years':
-         case 'months':
-         case 'weeks':
-         case 'days':
-            out[f] = '';
-            i = 0;
-            c = trend[f];
-            break;
-         default:
-            // the actual date keys
-            // since they are sequential and must appear after the interval, we can just increment through them
-            out[f] = c[i++];
-      }
-   });
-   return out;
-}
-
-function _buildCsvHeadings(intervalKeys) {
-   var out = [];
-   _.each(intervalKeys, function(keys, units) {
-      out.push(units);
-      _.each(keys, function(k) {
-         out.push(k);
-      });
-   });
-   return out;
-}
 
 /**
  * Convert StatsBuilder internal data into XML compatible format
@@ -245,7 +148,6 @@ fxns.writeFile = function(filename, data) {
 };
 
 fxns.format = function (format, compress, data) {
-   //todo csv won't work with trends
    var out;
    switch(format) {
       case 'json':
@@ -613,7 +515,7 @@ function _serializeFunctions(obj) {
    return out;
 }
 
-function dateStringer(key, value) {
+function dateStringer(key, value) { // key is necessary here due to JSON API
    if( value && typeof(value) === 'object' && moment.isMoment(value) ) {
       return value.utc().format();
    }
@@ -656,4 +558,99 @@ function deepFind(vals, k1, k2, k3, k4, k5) {
 function _getCachedByKey(dateKey, cachedKeys, cachedData) {
    var idx = _.indexOf(cachedKeys||[], dateKey);
    return idx > -1 && cachedData && cachedData.length > idx? cachedData[idx] : {};
+}
+
+/** CSV Functions
+  *********************************/
+
+function _buildCsvStats(stats) {
+   var out = [];
+   out.push(_csvStatRow('total', stats.total.stats));
+   if( stats.repos ) {
+      _.each(stats.repos, function(repo, name) {
+         out.push(_csvStatRow(name, repo.stats));
+      });
+   }
+   return out;
+}
+
+function _csvStatRow(repo, stats) {
+   return _.extend({repo: repo}, stats);
+}
+
+function _buildCsvTrends(fields, stats) {
+   var out = [], statKeys = _.keys(stats.total.trends);
+
+   // add totals
+   _trendsFor(out, fields, 'total', statKeys, stats.total);
+
+   // add repos
+   _.each(stats.repos, function(repo, name) {
+      _trendsFor(out, fields, name, statKeys, repo)
+   });
+
+   return out;
+}
+
+function _trendsFor(out, fields, repoName, statKeys, repo) {
+   _.each(statKeys, function(key) {
+      out.push(_csvTrend(repoName, key, fields, repo.stats[key], repo.trends[key]));
+   });
+}
+
+function _csvTrend(repoName, statName, fields, total, trend) {
+   var out = {}, c = null, i = 0, last = '';
+   _.each(fields, function(f) {
+      switch(f) {
+         case 'repo':
+            out[f] = repoName;
+            break;
+         case 'stat':
+            out[f] = statName;
+            break;
+         case 'total':
+            out[f] = total;
+            break;
+         case 'years':
+         case 'months':
+         case 'weeks':
+         case 'days':
+            i = 0;
+            c = trend[f];
+            out[f] = '';
+            break;
+         default:
+            // the actual date keys
+            // since they are sequential and must appear after the interval, we can just increment through them
+            out[f] = c[i++];
+      }
+   });
+   return out;
+}
+
+function _buildCsvHeadings(intervalKeys) {
+   var out = [];
+   _.each(intervalKeys, function(keys, units) {
+      out.push(units);
+      var format = _shortDateFormat(units);
+      _.each(keys, function(k) {
+         out.push(moment.utc(k).format(format));
+      });
+   });
+   return out;
+}
+
+function _shortDateFormat(units) {
+   switch(units) {
+      case 'years':
+         return 'YYYY';
+      case 'months':
+         return 'YYYY-MM';
+      case 'weeks':
+         return 'YYYY-MM-DD(ww)';
+      case 'days':
+         return 'YYYY-MM-DD';
+      default:
+         return '';
+   }
 }

@@ -12,11 +12,11 @@ simple way to generate stats and track trends via the GitHub API.
 
 ## Features
 
- * Simple (just configure repo and stats you want to collect, get your formatted (json/xml/csv) data and chart it)
- * Fast (stats are cumulative and cached, only data changed since last update is requested and parsed)
- * Handles rate limits gracefully (if limit is exceeded, restarts where it left off last)
- * Handles large numbers of commits (only keeps data from a single commit in memory at any time)
- * Filtering (exclude orgs, repos, dirs, or files from the stats by using a filter callback)
+ * Simple: just configure stats you want, get your formatted json/xml/csv data and chart it
+ * Fast: stats are cumulative, cached, and only changes are read
+ * Handles rate limits gracefully by resuming where it left off
+ * Handles large numbers of commits, only one has to fit in memory at a time
+ * Filter by org, directory, or file patterns
 
 ## Installation
 
