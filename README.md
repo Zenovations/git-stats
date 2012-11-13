@@ -57,7 +57,7 @@ See the comments in config.sample.js
 
 ### Examples
 
-Visit http://katowulf.github.com/git-stats
+Visit http://zenovations.github.com/git-stats
 
 ### Memory usage, CPU cycles, and storage space
 
