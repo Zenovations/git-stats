@@ -99,7 +99,7 @@ Repo.prototype.addCommit = function(commit) {
    }
 
    // parse the commit/commitDetail objects and obtain all stats for them
-   var changes  = _parseCommitChanges(commit, this.collectBytes, this.fileFilter);
+   var changes  = _parseCommitChanges(this.meta, commit, this.collectBytes, this.fileFilter);
 
    var when = moment(commit.commit.committer.date).utc();
    logger.info('  C', this.name, commit.sha, when.format());
@@ -153,14 +153,14 @@ function logXLimit(meta) {
    }
 }
 
-function _parseCommitChanges(commit, hasBytes, fileFilter) {
+function _parseCommitChanges(repoMeta, commit, hasBytes, fileFilter) {
    var stats = { files: 0, bytes: 0, lines: 0, adds: 0, deletes: 0, commits: 1 };
    if( commit.files ) {
       var f, files = commit.files, i = ~~(files && files.length);
       while(i--) {
          f = files[i];
 
-         if( fileFilter && !fileFilter(f) ) {
+         if( fileFilter && !fileFilter(f, repoMeta) ) {
             continue;
          }
 

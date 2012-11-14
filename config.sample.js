@@ -169,9 +169,10 @@ module.exports = {
        * files (number of files, bytes, lines of code). file.filename contains the relative path to the repo root
        *
        * @param {object} file data straight from GitHub's collect API
+       * @param {object} repo basic info about the repo (name, fullName, size, created, updated, description, homepage, url, owner)
        * @return {Boolean}
        */
-      file: function(file) {
+      file: function(file, repo) {
          var parts = file.filename.split('/'),
              dirs = parts.length > 1? parts.slice(0, -1) : [],
              name = parts.slice(-1)[0],

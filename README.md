@@ -78,6 +78,7 @@ additional key/value to the output data.
 
 ## Limitations
 
+* This lib doesn't format data for various libs; that's your job; it just accumulates and stores it for reference
 * Changes to the config file's stats may require the cache be deleted and all stats recompiled; this trade-off
   is annoying but keeps the cache size much smaller since it only needs to store compiled data and not all
   historic numbers (which would honestly require a full-on database)
