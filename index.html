@@ -8,8 +8,6 @@
 
   <link rel="stylesheet" href="stylesheets/stylesheet.css" media="screen"/>
   <link rel="stylesheet" href="stylesheets/pygment_trac.css"/>
-  <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
-  <script type="text/javascript" src="javascripts/script.js"></script>
 
   <title>Git-stats</title>
   <meta name="description" content="Retrieve interesting project statistics from GitHub">
@@ -36,9 +34,16 @@
         <span class="blc"></span><span class="trc"></span>
         </div>
         <article class="markdown-body">
-          <h3>What is it?</h3>
+          <h3>Katowulf's Coding Stats</h3>
 
-<p>Retrieve interesting stats (configurable) about GitHub projects attached to a given user/org and stuff them into a useful data file (json/csv/xml), so they can be used to generate pretty charts and trends.</p>
+          <div id="lineChart" style="height: 250px"></div>
+          <div id="activityChart"></div>
+
+          <div id="repos"></div>
+
+          <h3>What does it do? Make pretties?</h3>
+
+<p>Git-stats retrieves statistics about your GitHub repos and stuffs them into a useful data file (json/csv/xml) so they can be used to generate pretty charts and trends.</p>
 
 <p>It can parse some pretty big repos without trouble, even if so many requests must be made that GitHub's rate limits will be exceeded.</p>
 
@@ -58,7 +63,7 @@
 
 <h3>Authors and Contributors</h3>
 
-<p>This tool is a <a href="http://github.com/Zenovations">Zenovation</a> created created by Michael Wulf (<a href="https://github.com/katowulf" class="user-mention">@katowulf</a>).</p>
+<p>This tool is a <a href="http://github.com/Zenovations">Zenovation</a> created by Michael Wulf (<a href="https://github.com/katowulf" class="user-mention">@katowulf</a>).</p>
 
 <h3>Support or Contact</h3>
 
@@ -93,6 +98,13 @@
             pageTracker._trackPageview();
             } catch(err) {}
           </script>
+
+  <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
+  <script type="text/javascript" src="javascripts/underscore.js"></script>
+  <script type="text/javascript" src="javascripts/moment.js"></script>
+  <script src="javascripts/highcharts.js"></script>
+  <script src="javascripts/exporting.js"></script>
+  <script type="text/javascript" src="javascripts/script.js"></script>
 
 </body>
 </html>
