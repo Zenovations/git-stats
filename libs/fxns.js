@@ -191,6 +191,7 @@ fxns.cache = function(stats, conf) {
    if( cacheFileName ) {
       var cache = fxns.cacheFormat(stats);
       cache.lastConfig = _copyConfForCache(conf);
+      cache.lastUpdate = moment.utc();
       FS.writeFile(cacheFileName, JSON.stringify(cache), function (err) {
          if (err) throw err;
          log.info('CACHE written to %s', cacheFileName);

@@ -174,7 +174,7 @@ module.exports = {
       file: function(file) {
          var parts = file.filename.split('/'),
              dirs = parts.length > 1? parts.slice(0, -1) : [],
-             name = parts.slice(-1),
+             name = parts.slice(-1)[0],
              i = dirs.length,
              badDir = false;
 

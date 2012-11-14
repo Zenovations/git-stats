@@ -168,6 +168,7 @@ function _parseCommitChanges(commit, hasBytes, fileFilter) {
             stats.bytes += fxns.analyzePatch(f.patch).diff;
          }
          switch(f.status) {
+            case 'renamed':
             case 'modified':
                stats.adds += f.additions;
                stats.deletes += f.deletions;
