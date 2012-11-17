@@ -1,8 +1,7 @@
 
 var fxns   = require('./fxns.js'),
      _     = require('underscore'),
-    moment = require('moment'),
-    log    = fxns.logger();
+    moment = require('moment');
 
 function Trend(statKeys, formats, intervals, normalizedCache) {
    normalizedCache || (normalizedCache = {});

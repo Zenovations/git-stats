@@ -28,6 +28,10 @@ module.exports = {
    // and make it much more likely to exceed the GitHub API rate limits
    cache_file: '/tmp/github-stats-'+USER+'.cache.json',
 
+   // if you will use server.js and listen for GitHub post-commit hooks, then configure this to the port you
+   // want git-stats to listen on (must be 3000 or above unless you run git-stats as root)
+   port: 3001,
+
    // controls stats collected for each repository as of today; does not include any historical data for comparison
    // watchers, issues, and forks are essentially free (one request per repo), the other items configurable here come
    // with some overhead to retrieve

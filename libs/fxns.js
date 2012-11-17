@@ -15,7 +15,6 @@ var undef;
 var VALID_EMAIL = /((([a-z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])+(\.([a-z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])+)*)|((\x22)((((\x20|\x09)*(\x0d\x0a))?(\x20|\x09)+)?(([\x01-\x08\x0b\x0c\x0e-\x1f\x7f]|\x21|[\x23-\x5b]|[\x5d-\x7e]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(\\([\x01-\x09\x0b\x0c\x0d-\x7f]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF]))))*(((\x20|\x09)*(\x0d\x0a))?(\x20|\x09)+)?(\x22)))@((([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.)+(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.?/;
 
 var fxns = exports;
-
 fxns.logger = function(conf) {
    if( conf || !log ) { log = prepLogger(conf); }
    return log;
@@ -197,6 +196,43 @@ fxns.cache = function(stats, conf) {
          log.info('CACHE written to %s', cacheFileName);
       });
    }
+};
+
+/**
+ * Run the git-stats, send emails, store files, do whatever conf tells us to do
+ * @param conf
+ */
+fxns.autoRunStats = function(conf) {
+   sb.load(conf)
+         .then(function(stats) {
+            var data = stats.format(conf.format, conf.compress);
+            switch(fxns.outputType(conf.to)) {
+               case 'stdout':
+                  // don't use logger here; it must get printed
+                  console.log(data && typeof(data) === 'object'? util.inspect(data, false, 10, true) : data);
+                  break;
+               case 'email':
+                  fxns.sendEmail(conf.to, {
+                     subject: '[git-stats] stats for '+conf.user,
+                     text: 'See attach a mint!',
+                     attachments: [
+                        { fileName: 'git-stats-'+conf.user+'.'+conf.format, contents: data }
+                     ]
+                  }, conf);
+                  break;
+               case 'file':
+                  fxns.writeFile(conf.to, data);
+                  break;
+               default:
+                  console.error('Invalid output destination (not stdout, an email address, or a file path)', conf.to);
+            }
+         })
+         .fail(function(e) {
+            if( conf.send_errors_to ) {
+               fxns.sendEmail(conf.send_errors_to, e.stack || e, conf);
+            }
+            log.error(e.stack || e);
+         });
 };
 
 fxns.cacheDefaults = {
@@ -655,3 +691,5 @@ function _shortDateFormat(units) {
          return '';
    }
 }
+
+var sb          = require('./StatsBuilder.js');

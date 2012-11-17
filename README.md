@@ -26,6 +26,8 @@ simple way to generate stats and track trends via the GitHub API.
 
 ## Usage
 
+### Cron Job
+
 The simplest way to utilize git-stats is to compile a static file (via a cron, upstart, or scheduled service)
 which can be requsted via HTTP. This is done with `app.js`:
 
@@ -35,10 +37,30 @@ Copy `config.sample.js` to `config.js` and set username/password, then run:
 
 This is preferable to building the stats in real time when they are requested due to the rate limits on GitHub's API.
 
+### Using GitHub Service Hooks
+
+You can have the stats build whenever a commit occurs by creating hooks in GitHub.
+
+Copy `config.sample.js` to `config.js`, set `username`, set `password`, and set `port` to an arbitrary
+number greater than 3000
+
+In GitHub, go to repo > Admin > Service Hooks > WebHook URLs and point your WebHook
+to `http://yourservername.tld:nnnn` where nnnn is the port number.
+
+Start up the server:
+
+      cd git-stats
+      node ./server.js
+
+Whenever GitHub receives a commit, it will call that URL and git-stats will accumulate the new commit into its stats.
+
+### Use as a Lib
+
 You may also generate stats within your own application by including the git-stats directory (index.js) as a module:
 
     var GitStats = require('git-stats');
-    GitStats.run({user: 'katowulf', pass: 'xxxxx' })
+    var config = {user: 'katowulf', pass: 'xxxxx' }; //any values from config.sample.js
+    GitStats.run(config)
        .then(function(results) {
           console.log( results.format(format, compress) );
        })
@@ -46,10 +68,12 @@ You may also generate stats within your own application by including the git-sta
           console.error(e);
        });
 
-The config.js file is not utilized when git-stats is used as a library. They are passed directly into the `run`
-method by the caller instead. Any settings not provided to the `run` method are pulled from config.sample.js instead,
-so only overridden settings need to be specified. Of course, some of the settings will be ignored (e.g. the lib will
-not automatically send emails as this is considered the app's job).
+Or if you want it to handle everything (saving files, emails, etc) you can use the `auto` method, which is equivalent
+to executing `app.js`:
+
+    var GitStats = require('git-stats');
+    var config = {user: 'katowulf', pass: 'xxxxx' }; //any values from config.sample.js
+    GitStats.auto(config);
 
 ### Configuration options
 
@@ -62,19 +86,15 @@ Visit http://zenovations.github.com/git-stats
 ### Memory usage, CPU cycles, and storage space
 
 The disk and memory usage for storing one trend can be roughly calculated using this pseudo-formula:
-`bytes = number_of_repos * sum(trends.intervals) * ~40 bytes` (64bit number + ISO formatted date string + json syntax)
+`trend_size = number_of_repos * sum(trends.intervals) * 10 bytes` (a 64bit number plus some json syntax is around 10 bytes)
 
 For example, storing `watchers` for 10 GitHub repositories over {years: 10, months: 12, weeks: 25, days: 30}
-would be approximately 31K uncompressed: 10 * (10 + 12 + 25 + 30) * 40
+would be approximately 7.7K uncompressed: 10 * (10 + 12 + 25 + 30) * 10
 
-Storing all 9 stats would be around 279K (31K * 9) and storing all 9 stats for 100 repos would cost around 2.7MB.
+Storing all 9 stats would be around 69k (7.7k * 9) and storing all 9 stats for 10 repos would cost around 690k.
 
 Compression, naturally, would greatly improve this since the data is nothing but text. XML is quite a bit more
 verbose and creates a considerably larger footprint.
-
-Adding averages into the trends does not significantly increase the footprint, as it only requires caching 2 64bit
-numbers for the last 31 days and 12 months (i.e. around 1k with json syntax for each stat recorded) and adds one
-additional key/value to the output data.
 
 ## Limitations
 
