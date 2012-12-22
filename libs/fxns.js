@@ -244,26 +244,28 @@ fxns.cacheDefaults = {
    },
    repos: {},
    intervalKeys: {},
-   lastConfig: {}
+   lastConfig: {},
+   inactive: {}
 };
 
 fxns.readCache = function(conf) {
+   var defaults = fxns.cacheDefaults;
    try {
       //todo use a reviver function to make moments out of iso date strings
       var path = conf.cache_file, cache = FS.existsSync(path)? fxns.fromJson(FS.readFileSync(path)) : null;
       if( cache && _statsFieldsUpdatedInConf(cache.lastConfig, conf) ) {
          //todo make this more sophisticated so that innocuous changes don't require a full rebuild
          log.warn('configuration changed, deleting cache and starting from scratch');
-         fxns.cache(fxns.cacheDefaults, conf);
-         return fxns.cacheDefaults;
+         fxns.cache(defaults, conf);
+         return defaults;
       }
       else {
-         return _.extend(fxns.cacheDefaults, cache);
+         return _.extend(defaults, cache);
       }
    }
    catch(e) {
       log.warn(e);
-      return fxns.cacheDefaults;
+      return defaults;
    }
 };
 

@@ -51,6 +51,10 @@ function StatsBuilder(conf) {
          // or an error occurred, we could be missing a valid repo and accidentally destroy the data
          _.difference(_.keys(this.cache.repos), this.tmp.reposFound).forEach(_.bind(function(k) { //todo-abstract
             logger.warn('deleted old repo', k);
+            if( conf.move_deleted_repos_to_inactive ) {
+               // make a copy in the inactive list before removing from the active repos
+               this.cache.inactive[k] = this.cache.repos[k];
+            }
             delete this.cache.repos[k];
          }, this));
          return this;

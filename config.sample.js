@@ -195,6 +195,9 @@ module.exports = {
 
    },
 
+   // if true, repos deleted on GitHub are stored in "inactive" list, otherwise they are removed forever
+   move_deleted_repos_to_inactive: true,
+
    // true to send email on any error (be sure to configure settings below)
    report_errors: true,
 
