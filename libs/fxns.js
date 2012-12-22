@@ -539,8 +539,8 @@ function _statsFieldsUpdatedInConf(partialConfFromCache, currConf) {
 }
 
 function _copyConfForCache(conf) {
-   var copy = _deepCopy(_.pick(conf, 'user', 'static', 'trends', 'cacheFile', 'filters'));
-   copy.filters = _serializeFunctions(conf.filters);
+   var copy = _deepCopy(_.pick(conf, 'user', 'static', 'trends', 'cacheFile'));
+   copy.filters = _serializeFunctions(_.pick(conf.filters, ['file']));
    return copy;
 }
 
