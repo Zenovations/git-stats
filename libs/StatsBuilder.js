@@ -43,8 +43,8 @@ function StatsBuilder(conf) {
    };
 
    var promises = [];
-   promises.push( this.gh.repos(_.bind(this.addRepo, this)) );
    promises.push( this.gh.orgs(_.bind(this.addOrg,  this)) );
+   promises.push( this.gh.repos(_.bind(this.addRepo, this)) );
    this.promise = Q.all(promises)
       .then(_.bind(function() {
          // we only do this if no errors occurred and all data was processed; in the case that some data was skipped,
@@ -105,7 +105,7 @@ StatsBuilder.prototype.addOrg = function(org) {
       if(_.where(orgs, orgEntry).length < 1 ) {
          this.cache.orgs.push(orgEntry);
       }
-      promises.push( this.gh.repos(org.login, _.bind(this.addRepo, this)) );
+      //promises.push( this.gh.repos(org.login, _.bind(this.addRepo, this)) );
    }
    return Q.all(promises);
 };

@@ -30,20 +30,13 @@ GitHubWrapper.prototype.orgs = function(iterator) {
 };
 
 /**
- * @param {string} [org]
  * @param {function} iterator called once with each repo object, if this function returns {boolean}false, iteration is stopped
  * @return {promise}
  */
-GitHubWrapper.prototype.repos = function(org, iterator) {
-   if( typeof(org) === 'function' ) {
-      iterator = arguments[0];
-      org = null;
-   }
+GitHubWrapper.prototype.repos = function(iterator) {
    // this fetches private repos
-   var options = {user: this.user, type: 'all'};
-   if( org ) { options.org = org; }
-   var method = options.org? 'getFromOrg' : 'getFromUser';
-   return acc(this.auth, iterator, this.gh.repos, method, options);
+   var options = {user: this.user, type: 'all', sort: 'updated', direction: 'desc'};
+   return acc(this.auth, iterator, this.gh.repos, 'getAll', options);
 };
 
 /**
