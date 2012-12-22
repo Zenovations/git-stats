@@ -39,7 +39,7 @@ GitHubWrapper.prototype.repos = function(org, iterator) {
       iterator = arguments[0];
       org = null;
    }
-   var options = {user: this.user};
+   var options = {user: this.user, type: 'all'};
    if( org ) { options.org = org; }
    var method = options.org? 'getFromOrg' : 'getFromUser';
    return acc(this.auth, iterator, this.gh.repos, method, options);
