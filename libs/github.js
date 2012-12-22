@@ -42,7 +42,7 @@ GitHubWrapper.prototype.repos = function(org, iterator) {
    // this fetches private repos
    var options = {user: this.user, type: 'all'};
    if( org ) { options.org = org; }
-   var method = options.org? 'getFromOrg' : 'getFromUser';
+   var method = options.org? 'getFromOrg' : 'getAll';
    return acc(this.auth, iterator, this.gh.repos, method, options);
 };
 
